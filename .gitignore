@@ -1,0 +1,31 @@
+# Dependencies and build output
+node_modules/
+.pnpm-store/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+
+# Local secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+!**/.env.example
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs and local QA artifacts
+*.log
+.codex_doc_render_*/
+~$*
+
+# Docker volumes when bind-mounted locally
+.data/
+
+# Word keeps a root copy open during local editing
+/DAU_AN_DAI_VIET_AI_REQUIREMENTS_VERSION_0.docx
