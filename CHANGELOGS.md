@@ -6,6 +6,7 @@ Tài liệu này ghi nhận các thay đổi đáng chú ý theo từng phiên b
 
 ### Added
 
+- Thêm GitHub Actions CI cho push/pull request vào `main`, gồm frozen install, lint, typecheck, build và kiểm tra Docker Compose.
 - Chuẩn hóa package manager thành pnpm 11.19.0 bằng Corepack, `packageManager`, `engineStrict` và preinstall guard.
 - Bổ sung hướng dẫn pnpm/frozen lockfile; ngăn commit lockfile của npm, yarn hoặc bun.
 - Tách ứng dụng thành hai workspace độc lập: `frontend/` dùng Next.js và `backend/` dùng Fastify.

@@ -1,5 +1,7 @@
 # Dấu Ấn Đại Việt AI
 
+[![CI](https://github.com/nWind9218/van-lang-su-ki/actions/workflows/ci.yml/badge.svg)](https://github.com/nWind9218/van-lang-su-ki/actions/workflows/ci.yml)
+
 Base project Version 0 cho nền tảng game hóa học lịch sử Việt Nam. Repository được tách thành hai ứng dụng độc lập: frontend Next.js phục vụ giao diện/gameplay và backend Fastify cung cấp API, kết nối PostgreSQL, MinIO và OpenAI. Hạ tầng dữ liệu vẫn chạy local bằng Docker Compose để có thể thay bằng dịch vụ cloud ở phiên bản sau.
 
 ## 1. Tech stack
@@ -162,6 +164,8 @@ van-lang-su-ki/
 ├─ assets/references/               # ảnh tham chiếu ban đầu
 ├─ .agents/skills/
 │  └─ karpathy-guidelines/         # coding guidelines dùng trong repository
+├─ .github/workflows/
+│  └─ ci.yml                       # CI cho push và pull request vào main
 ├─ .codegraph/                      # metadata local cho CodeGraph
 ├─ .codex/config.toml               # cấu hình CodeGraph MCP cho Codex
 ├─ AGENTS.md                        # quy tắc CodeGraph và coding agent
@@ -253,3 +257,17 @@ codegraph impact <symbol>
 ```
 
 Sau khi thay đổi code, chạy lại `codegraph sync` và xác nhận index đã cập nhật.
+
+## 11. Continuous Integration
+
+Workflow `.github/workflows/ci.yml` tự chạy khi push hoặc tạo pull request vào `main`, đồng thời hỗ trợ chạy thủ công từ tab Actions.
+
+CI sử dụng pnpm 11.19.0 và Node.js 22 trên Ubuntu, với quyền GitHub token chỉ đọc. Mỗi run thực hiện:
+
+1. Cài dependency bằng `pnpm install --frozen-lockfile`.
+2. Chạy `pnpm lint`.
+3. Chạy `pnpm typecheck`.
+4. Chạy `pnpm build`.
+5. Kiểm tra cấu hình bằng `docker compose config --quiet`.
+
+Các run cũ trên cùng branch sẽ được hủy khi có commit mới để tiết kiệm thời gian CI.
