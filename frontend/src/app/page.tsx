@@ -67,8 +67,8 @@ export default function HomePage() {
         </article>
         <article>
           <span className="feature-index">02</span>
-          <h2>Backend nhẹ</h2>
-          <p>API routes giữ khóa bí mật ở máy chủ và kết nối hạ tầng local qua adapter.</p>
+          <h2>Backend độc lập</h2>
+          <p>Fastify giữ khóa bí mật ở máy chủ và kết nối hạ tầng local qua adapter.</p>
         </article>
         <article>
           <span className="feature-index">03</span>

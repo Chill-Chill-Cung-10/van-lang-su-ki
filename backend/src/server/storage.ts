@@ -1,10 +1,9 @@
-import "server-only";
-
 import { S3Client } from "@aws-sdk/client-s3";
-import { getServerEnv } from "@/server/env";
+import { getServerEnv } from "./env.js";
 
 export function getStorageClient() {
   const env = getServerEnv();
+
   return new S3Client({
     endpoint: env.S3_ENDPOINT,
     region: env.S3_REGION,

@@ -1,8 +1,10 @@
-import "server-only";
-
 import { z } from "zod";
 
 const envSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  HOST: z.string().default("0.0.0.0"),
+  PORT: z.coerce.number().int().min(1).max(65_535).default(4000),
+  FRONTEND_URL: z.string().url().default("http://localhost:3000"),
   DATABASE_URL: z.string().url(),
   DEMO_PLAYER_ID: z.string().uuid().default("00000000-0000-4000-8000-000000000001"),
   OPENAI_API_KEY: z.string().optional(),
@@ -12,8 +14,13 @@ const envSchema = z.object({
   S3_BUCKET: z.string().default("van-lang-assets"),
   S3_ACCESS_KEY_ID: z.string().default("vanlang"),
   S3_SECRET_ACCESS_KEY: z.string().default("change-me-local-only"),
+  SMTP_HOST: z.string().default("localhost"),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65_535).default(1025),
 });
 
+let cachedEnv: z.infer<typeof envSchema> | undefined;
+
 export function getServerEnv() {
-  return envSchema.parse(process.env);
+  cachedEnv ??= envSchema.parse(process.env);
+  return cachedEnv;
 }

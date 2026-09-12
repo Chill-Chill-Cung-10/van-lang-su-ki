@@ -1,10 +1,12 @@
 packages:
-  - apps/*
-  - packages/*
+  - frontend
+  - backend
 
 allowBuilds:
+  esbuild: true
   unrs-resolver: true
 
 onlyBuiltDependencies:
+  - esbuild
   - sharp
   - unrs-resolver

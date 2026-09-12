@@ -34,8 +34,9 @@ The repository-local skill at `.agents/skills/karpathy-guidelines/SKILL.md` appl
 
 ## Project structure
 
-- `apps/web/src/app`: Next.js frontend routes and backend Route Handlers.
-- `apps/web/src/server`: server-only database, storage, and environment adapters.
+- `frontend/src/app`: Next.js frontend routes, components, Phaser gameplay, and 3D avatar UI.
+- `backend/src/routes`: Fastify REST API endpoints.
+- `backend/src/server`: server-only database, storage, and environment adapters.
 - `infra`: Docker Compose service initialization and database schema.
 - `docs/requirements`: approved Version 0 requirements.
 - `docs/references`: source documents used to derive requirements.
