@@ -44,6 +44,8 @@ The repository-local skill at `.agents/skills/karpathy-guidelines/SKILL.md` appl
 
 ## Required verification
 
+- Use pnpm 11.19.0 exclusively. Never run npm, yarn, bun, npx, or create another package-manager lockfile.
+- Run `pnpm install --frozen-lockfile` after dependency or workspace configuration changes.
 - Run `pnpm lint`, `pnpm typecheck`, and `pnpm build` for application changes.
 - Run `docker compose config --quiet` for Docker Compose changes.
 - Update `CHANGELOGS.md` for user-visible or versioned changes.

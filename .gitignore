@@ -1,3 +1,10 @@
+# pnpm is the only package manager
+package-lock.json
+npm-shrinkwrap.json
+yarn.lock
+bun.lock
+bun.lockb
+
 # Dependencies and build output
 node_modules/
 .pnpm-store/

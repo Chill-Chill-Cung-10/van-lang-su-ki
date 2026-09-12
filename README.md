@@ -20,10 +20,20 @@ Base project Version 0 cho nền tảng game hóa học lịch sử Việt Nam. 
 ## 2. Yêu cầu trên máy phát triển
 
 - Node.js 20.9 trở lên.
-- pnpm 10 trở lên. Nếu chưa có, chạy `corepack enable` rồi `corepack prepare pnpm@latest --activate`.
+- pnpm 11.19.0, được pin bằng trường `packageManager` tại root.
 - Docker Desktop có hỗ trợ lệnh `docker compose`.
 - Git.
 - CodeGraph CLI nếu muốn dùng quy trình tra cứu code được cấu hình sẵn.
+
+Kích hoạt đúng phiên bản pnpm bằng Corepack:
+
+```bash
+corepack enable
+corepack prepare pnpm@11.19.0 --activate
+pnpm --version
+```
+
+Kết quả phải là `11.19.0`. Repository có guard tại `scripts/ensure-pnpm.mjs`; lệnh cài đặt bằng npm hoặc yarn sẽ bị từ chối để tránh tạo lockfile không đồng nhất.
 
 ## 3. Cài đặt lần đầu
 
@@ -63,6 +73,12 @@ cp backend/.env.example backend/.env.local
 pnpm install
 ```
 
+Trong CI hoặc khi cần bảo đảm dependency khớp tuyệt đối với lockfile:
+
+```bash
+pnpm install --frozen-lockfile
+```
+
 ### Bước 4: chạy database và dịch vụ local
 
 ```bash
@@ -100,6 +116,7 @@ pnpm dev:backend
 ## 4. Lệnh thường dùng
 
 ```bash
+pnpm install         # cài dependency cho toàn workspace
 pnpm dev             # chạy frontend và backend song song
 pnpm dev:frontend    # chỉ chạy Next.js
 pnpm dev:backend     # chỉ chạy Fastify
@@ -151,8 +168,11 @@ van-lang-su-ki/
 ├─ .env.example                     # cấu hình Docker Compose
 ├─ docker-compose.yml               # PostgreSQL, MinIO, Mailpit, Adminer
 ├─ CHANGELOGS.md                    # lịch sử thay đổi
-├─ package.json                     # lệnh dùng chung cho workspace
-└─ pnpm-workspace.yaml              # khai báo frontend và backend
+├─ scripts/
+│  └─ ensure-pnpm.mjs              # từ chối npm/yarn, chỉ cho phép pnpm
+├─ package.json                     # pin pnpm và lệnh dùng chung
+├─ pnpm-lock.yaml                   # lockfile duy nhất của repository
+└─ pnpm-workspace.yaml              # khai báo và cấu hình workspace
 ```
 
 ## 6. API backend mẫu
