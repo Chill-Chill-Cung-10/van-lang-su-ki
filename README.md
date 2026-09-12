@@ -108,6 +108,11 @@ pnpm services:reset  # xóa container và volume local
 
 ```text
 van-lang-su-ki/
+├─ .agents/skills/
+│  └─ karpathy-guidelines/         # skill coding guidelines dùng trong repository
+├─ .codegraph/                     # metadata local cho CodeGraph index
+├─ .codex/config.toml              # cấu hình CodeGraph MCP cho Codex
+├─ AGENTS.md                       # quy tắc CodeGraph và coding agent
 ├─ assets/
 │  └─ references/                 # ảnh tham chiếu ban đầu, chưa phải asset production
 ├─ apps/
@@ -189,3 +194,24 @@ Chi tiết các quyết định kỹ thuật nằm trong `docs/ARCHITECTURE.md`.
 ## 9. Trạng thái Version 0
 
 Base project hiện cung cấp khung kỹ thuật, giao diện khởi đầu, gameplay mẫu, API mẫu và hạ tầng local. Xác thực người dùng, CMS đầy đủ, RAG trên kho tri thức và pipeline tối ưu GLB là các hạng mục tiếp theo, chưa phải tính năng production hoàn chỉnh.
+
+## 10. CodeGraph và coding agent
+
+Repository đã cấu hình CodeGraph MCP cho Codex tại `.codex/config.toml`, quy tắc làm việc chung tại `AGENTS.md` và skill Karpathy tại `.agents/skills/karpathy-guidelines/SKILL.md`.
+
+Sau khi clone lần đầu, cài CodeGraph CLI nếu máy chưa có rồi tạo index:
+
+```bash
+codegraph index
+```
+
+Trong công việc hằng ngày, luôn kiểm tra và đồng bộ index trước khi đọc rộng repository:
+
+```bash
+codegraph status
+codegraph sync
+codegraph explore "Mô tả luồng hoặc symbol cần tìm"
+codegraph impact <symbol>
+```
+
+Sau khi thay đổi code, chạy lại `codegraph sync` và xác nhận `codegraph status` báo index đã cập nhật. Codex cần trust project và khởi động lại session sau lần đầu thêm cấu hình MCP local.

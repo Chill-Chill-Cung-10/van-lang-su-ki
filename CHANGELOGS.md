@@ -6,7 +6,8 @@ Tài liệu này ghi nhận các thay đổi đáng chú ý theo từng phiên b
 
 ### Added
 
-- Khu vực này dành cho thay đổi đang phát triển và chưa phát hành.
+- Thêm cấu hình CodeGraph MCP cục bộ, metadata index và quy trình bắt buộc kiểm tra/đồng bộ CodeGraph trong `AGENTS.md`.
+- Thêm repository-local skill `karpathy-guidelines` cho hoạt động viết, review, debug và refactor code.
 
 ## 0.1.0 - 2026-09-12
 
