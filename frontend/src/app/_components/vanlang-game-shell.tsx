@@ -78,20 +78,21 @@ const textToPercent = (current: number, total: number) => Math.round((current / 
 const rewardDisplay = (value: number) => `${value} linh hồn`;
 const addUnique = (arr: string[], value: string) => (arr.includes(value) ? arr : [...arr, value]);
 
-export default function VanlangGameShell() {
+export default function VanlangGameShell({ initialScreen }: { initialScreen?: GameScreen }) {
   const [state, setState] = useState<ProgressState>(() => {
+    const initialState = initialScreen ? { ...DEFAULT_STATE, screen: initialScreen } : DEFAULT_STATE;
     if (typeof window === "undefined") {
-      return DEFAULT_STATE;
+      return initialState;
     }
 
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (!raw) {
-        return DEFAULT_STATE;
+        return initialState;
       }
-      return { ...DEFAULT_STATE, ...JSON.parse(raw) };
+      return { ...DEFAULT_STATE, ...JSON.parse(raw), ...(initialScreen ? { screen: initialScreen } : {}) };
     } catch {
-      return DEFAULT_STATE;
+      return initialState;
     }
   });
 

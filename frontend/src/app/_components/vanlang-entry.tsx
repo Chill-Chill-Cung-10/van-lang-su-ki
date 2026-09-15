@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { FormEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import VanlangGameShell from "./vanlang-game-shell";
+import { VanlangPrologue } from "./vanlang-prologue";
 import "./vanlang-entry.css";
 
 type Account = {
@@ -12,7 +13,7 @@ type Account = {
 };
 
 type AuthMode = "login" | "register";
-type EntryStage = "menu" | "game";
+type EntryStage = "menu" | "prologue" | "game";
 
 const ACCOUNTS_KEY = "vanlang-accounts-v1";
 const SESSION_KEY = "vanlang-session-v1";
@@ -190,18 +191,18 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
   );
 }
 
-function MainMenu({ account, onStart, onLogout }: { account: Account; onStart: () => void; onLogout: () => void }) {
+function MainMenu({ account, onStart, onContinue, onLogout }: { account: Account; onStart: () => void; onContinue: () => void; onLogout: () => void }) {
   const [hasSave] = useState(() => typeof window !== "undefined" && Boolean(window.localStorage.getItem(GAME_PROGRESS_KEY)));
   const [showOptions, setShowOptions] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
 
   const menuItems = useMemo(
     () => [
-      ...(hasSave ? [{ label: "Tiếp tục", action: onStart }] : []),
+      ...(hasSave ? [{ label: "Tiếp tục", action: onContinue }] : []),
       { label: "Bắt đầu", action: onStart },
       { label: "Lựa chọn", action: () => setShowOptions(true) },
     ],
-    [hasSave, onStart],
+    [hasSave, onContinue, onStart],
   );
   const [selected, setSelected] = useState(0);
 
@@ -286,16 +287,33 @@ export default function VanlangEntry() {
     [sessionEmail],
   );
   const [stage, setStage] = useState<EntryStage>("menu");
+  const [gameInitialScreen, setGameInitialScreen] = useState<"map" | undefined>();
 
-  if (stage === "game") return <VanlangGameShell />;
+  if (stage === "game") return <VanlangGameShell initialScreen={gameInitialScreen} />;
   if (!account) {
     return <AuthScreen onAuthenticated={() => { setStage("menu"); window.dispatchEvent(new Event("vanlang-session")); }} />;
+  }
+  if (stage === "prologue") {
+    return (
+      <VanlangPrologue
+        onComplete={() => {
+          window.localStorage.setItem(`vanlang-prologue-seen:${account.email}`, "true");
+          setGameInitialScreen("map");
+          setStage("game");
+        }}
+      />
+    );
   }
 
   return (
     <MainMenu
       account={account}
-      onStart={() => setStage("game")}
+      onStart={() => {
+        const hasSeenPrologue = window.localStorage.getItem(`vanlang-prologue-seen:${account.email}`) === "true";
+        setGameInitialScreen(undefined);
+        setStage(hasSeenPrologue ? "game" : "prologue");
+      }}
+      onContinue={() => { setGameInitialScreen(undefined); setStage("game"); }}
       onLogout={() => { window.localStorage.removeItem(SESSION_KEY); setStage("menu"); window.dispatchEvent(new Event("vanlang-session")); }}
     />
   );

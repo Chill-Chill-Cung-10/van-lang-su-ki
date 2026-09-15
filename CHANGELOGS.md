@@ -6,6 +6,7 @@ Tài liệu này ghi nhận các thay đổi đáng chú ý theo từng phiên b
 
 ### Added
 
+- Thêm bốn slide cốt truyện mở đầu cho tài khoản mới, dùng ảnh tư liệu Văn Lang, hiệu ứng đánh chữ và chuyển thẳng tới bản đồ sau cảnh cuối.
 - Thêm luồng đăng ký/đăng nhập cục bộ không cần email xác thực hoặc OTP trước khi vào game.
 - Thêm màn menu mở đầu điện ảnh `Văn Lang Sử Ký` theo ngôn ngữ Đông Sơn, hỗ trợ bàn phím, responsive và reduced motion.
 - Giải nén gói hướng dẫn thiết kế tham khảo vào `docs/van-lang-agent-pack` mà không ghi đè cấu hình dự án.
