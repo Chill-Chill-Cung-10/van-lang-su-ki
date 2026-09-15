@@ -37,3 +37,9 @@ Thumbs.db
 
 # Word keeps a root copy open during local editing
 /DAU_AN_DAI_VIET_AI_REQUIREMENTS_VERSION_0.docx
+
+*.glb
+
+assets/
+.codex/
+SKILL.md
