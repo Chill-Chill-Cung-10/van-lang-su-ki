@@ -731,3 +731,6 @@
     padding: 6px 8px;
   }
 }
+.portal-preload { position: fixed; left: -10000px; top: 0; width: 320px; height: 240px; opacity: 0; pointer-events: none; }
+.portal-transition-overlay { position: fixed; inset: 0; z-index: 120; display: grid; place-content: center; color: #fff4d8; background: rgba(10, 8, 6, .76); font-size: 18px; font-weight: 800; }
+.portal-transition-error { position: fixed; z-index: 121; left: 50%; bottom: 24px; display: flex; align-items: center; gap: 12px; max-width: min(680px, calc(100vw - 32px)); padding: 12px 16px; transform: translateX(-50%); color: #ffe8e3; border: 1px solid #d66d5f; border-radius: 7px; background: #3c1814; box-shadow: 0 8px 28px rgba(0,0,0,.45); }

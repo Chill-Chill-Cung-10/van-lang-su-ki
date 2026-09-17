@@ -1,8 +1,8 @@
-import { MapDocumentSchemaV1, nearestValidPoint, resolveMovement, type MapDocument, type Vec2 } from "@van-lang/map-contract";
+import { nearestValidPoint, resolveMovement, upgradeMapDocument, type MapDocument, type Vec2 } from "@van-lang/map-contract";
 import vanlangFixture from "@van-lang/map-contract/maps/vanlang.v1.json";
 
 export type NavPoint = { x: number; y: number };
-export const VANLANG_FALLBACK_DOCUMENT = MapDocumentSchemaV1.parse(vanlangFixture);
+export const VANLANG_FALLBACK_DOCUMENT = upgradeMapDocument(vanlangFixture);
 export const DUNGEON_SPAWN: NavPoint = { x: VANLANG_FALLBACK_DOCUMENT.navigation.spawn.x, y: VANLANG_FALLBACK_DOCUMENT.navigation.spawn.z };
 
 const toVec2 = (point: NavPoint): Vec2 => ({ x: point.x, z: point.y });

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MapDocumentSchemaV1, isPositionValid, type MapDocument, type MapRevisionEnvelope, type MapSummary } from "@van-lang/map-contract";
+import { isPositionValid, upgradeMapDocument, type MapDocument, type MapRevisionEnvelope, type MapSummary } from "@van-lang/map-contract";
 import Fastify from "fastify";
 import fixture from "../../../packages/map-contract/maps/vanlang.v1.json" with { type: "json" };
 import { mapsRoutes } from "./maps.js";
@@ -8,7 +8,7 @@ import { MapDocumentInvalidError, MapRevisionConflictError, type MapsRepository 
 
 class MemoryMapsRepository implements MapsRepository {
   current: MapRevisionEnvelope = {
-    mapId: "vanlang", revision: 1, etag: '"vanlang:1:test"', activatedAt: new Date(0).toISOString(), document: MapDocumentSchemaV1.parse(fixture),
+    mapId: "vanlang", revision: 1, etag: '"vanlang:1:test"', activatedAt: new Date(0).toISOString(), document: upgradeMapDocument(fixture),
   };
   async list(): Promise<MapSummary[]> {
     return [{ mapId: "vanlang", name: this.current.document.metadata.name, description: this.current.document.metadata.description, activeRevision: this.current.revision, updatedAt: this.current.activatedAt }];
@@ -32,7 +32,7 @@ test("list, save and load round trip preserves the saved map document", async ()
   const list = await app.inject({ method: "GET", url: "/api/maps" });
   assert.equal(list.statusCode, 200);
   assert.equal(list.json().maps[0].mapId, "vanlang");
-  const changed = structuredClone(MapDocumentSchemaV1.parse(fixture));
+  const changed = upgradeMapDocument(fixture);
   changed.metadata.name = "Văn Lang đã sửa";
   const saved = await app.inject({ method: "PUT", url: "/api/admin/maps/vanlang", headers: { origin: "http://localhost:3000", "if-match": '"vanlang:1:test"' }, payload: { document: changed } });
   assert.equal(saved.statusCode, 200);
@@ -40,13 +40,13 @@ test("list, save and load round trip preserves the saved map document", async ()
   const loaded = await app.inject({ method: "GET", url: "/api/maps/vanlang" });
   assert.equal(loaded.json().document.metadata.name, "Văn Lang đã sửa");
   assert.equal(loaded.headers.etag, saved.headers.etag);
-  assert.equal(isPositionValid(MapDocumentSchemaV1.parse(loaded.json().document), { x: 0, z: 0 }), true);
+  assert.equal(isPositionValid(upgradeMapDocument(loaded.json().document), { x: 0, z: 0 }), true);
   await app.close();
 });
 
 test("API rejects self-intersection, stale ETag and disabled writes", async () => {
   const { app } = await createApp();
-  const invalid = structuredClone(MapDocumentSchemaV1.parse(fixture));
+  const invalid = upgradeMapDocument(fixture);
   invalid.navigation.walkablePolygons[0].points = [{ x: -1, z: -1 }, { x: 1, z: 1 }, { x: -1, z: 1 }, { x: 1, z: -1 }];
   const rejected = await app.inject({ method: "PUT", url: "/api/admin/maps/vanlang", headers: { origin: "http://localhost:3000", "if-match": '"vanlang:1:test"' }, payload: { document: invalid } });
   assert.equal(rejected.statusCode, 400);
@@ -55,7 +55,7 @@ test("API rejects self-intersection, stale ETag and disabled writes", async () =
   unclosed.navigation.walkablePolygons[0].closed = false;
   const unclosedResponse = await app.inject({ method: "PUT", url: "/api/admin/maps/vanlang", headers: { origin: "http://localhost:3000", "if-match": '"vanlang:1:test"' }, payload: { document: unclosed } });
   assert.equal(unclosedResponse.statusCode, 400);
-  const stale = await app.inject({ method: "PUT", url: "/api/admin/maps/vanlang", headers: { origin: "http://localhost:3000", "if-match": '"stale"' }, payload: { document: fixture } });
+  const stale = await app.inject({ method: "PUT", url: "/api/admin/maps/vanlang", headers: { origin: "http://localhost:3000", "if-match": '"stale"' }, payload: { document: upgradeMapDocument(fixture) } });
   assert.equal(stale.statusCode, 412);
   await app.close();
 

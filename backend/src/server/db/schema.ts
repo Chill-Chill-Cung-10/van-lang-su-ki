@@ -61,3 +61,30 @@ export const mapRevisions = pgTable(
     unique("map_revisions_map_id_id_key").on(table.mapId, table.id),
   ],
 );
+
+export const mapFlows = pgTable("map_flows", {
+  flowId: text("flow_id").primaryKey(),
+  displayName: text("display_name").notNull(),
+  activeRevisionId: uuid("active_revision_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const mapFlowRevisions = pgTable(
+  "map_flow_revisions",
+  {
+    id: uuid("id").notNull().defaultRandom(),
+    flowId: text("flow_id").notNull().references(() => mapFlows.flowId, { onDelete: "restrict" }),
+    revision: integer("revision").notNull(),
+    schemaVersion: integer("schema_version").notNull(),
+    document: jsonb("document").notNull(),
+    checksum: text("checksum").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.id] }),
+    unique("map_flow_revisions_flow_revision_key").on(table.flowId, table.revision),
+    unique("map_flow_revisions_flow_id_id_key").on(table.flowId, table.id),
+  ],
+);

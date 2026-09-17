@@ -1,12 +1,13 @@
 "use client";
 
-import type { MapDocument } from "@van-lang/map-contract";
+import type { DirectedPortal, MapDocument } from "@van-lang/map-contract";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VanlangCinematicLoader } from "./vanlang-cinematic-loader";
 import { VanlangDungeonScreen } from "./vanlang-dungeon-screen";
+import { VanlangDungeonWorld } from "./vanlang-dungeon-world";
 import type { DungeonDrawer } from "./vanlang-dungeon-screen";
-import { loadRuntimeMap } from "../_lib/map-api-client";
+import { loadFlowMap, loadRuntimeMap } from "../_lib/map-api-client";
 import { DUNGEON_SPAWN, npcPositionFromDocument, projectToNavmesh } from "./vanlang-navmesh";
 import { VanlangWorldMap } from "./vanlang-world-map";
 import "./vanlang-game-shell.css";
@@ -26,6 +27,8 @@ type HudTab = "character" | "codex" | "leaderboard" | "battlepass";
 type CodexEntry = (typeof codexEntries)[number];
 type Quest = (typeof dungeonQuests)[number];
 type Npc = (typeof dungeonNpcs)[number];
+type PendingTransition = { token: number; targetMapId: string; document: MapDocument; entry: MapDocument["navigation"]["entryPoints"][number] };
+type PortalTransition = { phase: "idle" | "loading" | "cooldown"; error: string; portal: DirectedPortal | null; pending: PendingTransition | null; sourcePosition: { x: number; y: number } | null };
 
 type DialogState =
   | { kind: "timekeeper" }
@@ -122,7 +125,14 @@ export default function VanlangGameShell({
   const [mapDocument, setMapDocument] = useState<MapDocument | null>(null);
   const [mapFallbackActive, setMapFallbackActive] = useState(false);
   const [mapLoadError, setMapLoadError] = useState("");
+  const [transition, setTransition] = useState<PortalTransition>({ phase: "idle", error: "", portal: null, pending: null, sourcePosition: null });
   const latestStateRef = useRef(state);
+  const transitionToken = useRef(0);
+  const transitionAbort = useRef<AbortController | null>(null);
+  const transitionLoading = useRef(false);
+  const cooldownUntil = useRef(0);
+  const insidePortals = useRef(new Set<string>());
+  const portalMapRef = useRef<string | null>(null);
 
   const ambientTimer = useRef<number | null>(null);
   const movementTimer = useRef<number | null>(null);
@@ -176,10 +186,57 @@ export default function VanlangGameShell({
     });
   }, []);
 
+  const beginPortalTransition = useCallback((portal: DirectedPortal) => {
+    if (!mapDocument || transitionLoading.current) return;
+    transitionLoading.current = true;
+    const token = ++transitionToken.current;
+    transitionAbort.current?.abort();
+    const controller = new AbortController();
+    transitionAbort.current = controller;
+    const sourcePosition = { ...latestStateRef.current.playerPos };
+    setTransition({ phase: "loading", error: "", portal, pending: null, sourcePosition });
+    void loadFlowMap("vanlang", portal.target.mapId, controller.signal).then((target) => {
+      if (token !== transitionToken.current) return;
+      const entry = target.document.navigation.entryPoints.find((item) => item.id === portal.target.entryPointId);
+      if (!entry) throw new Error("PORTAL_ENTRY_POINT_NOT_FOUND");
+      setTransition({ phase: "loading", error: "", portal, pending: { token, targetMapId: target.mapId, document: target.document, entry }, sourcePosition });
+    }).catch((caught) => {
+      if (controller.signal.aborted || token !== transitionToken.current) return;
+      transitionLoading.current = false;
+      cooldownUntil.current = Date.now() + 500;
+      persist((current) => ({ ...current, playerPos: sourcePosition }));
+      setTransition({ phase: "cooldown", error: caught instanceof Error ? caught.message : "Không thể tải map đích.", portal, pending: null, sourcePosition });
+    });
+  }, [mapDocument, persist]);
+
+  const failPendingTransition = useCallback(() => {
+    if (!transition.pending) return;
+    transitionLoading.current = false;
+    cooldownUntil.current = Date.now() + 500;
+    if (transition.sourcePosition) persist((current) => ({ ...current, playerPos: transition.sourcePosition! }));
+    setTransition((current) => ({ ...current, phase: "cooldown", error: "Không thể tải scene map đích.", pending: null }));
+  }, [persist, transition.pending, transition.sourcePosition]);
+
+  const commitPendingTransition = useCallback(() => {
+    const pending = transition.pending;
+    if (!pending || pending.token !== transitionToken.current) return;
+    transitionLoading.current = false;
+    const playerPos = { x: pending.entry.position.x, y: pending.entry.position.z };
+    setMapDocument(pending.document);
+    setMapFallbackActive(false);
+    setDialog(null); setDungeonDrawer(null); setIsPlayerMoving(false);
+    setPlayerFacing(pending.entry.facingDeg * Math.PI / 180);
+    persist((current) => ({ ...current, selectedMap: pending.targetMapId, playerPos }));
+    cooldownUntil.current = Date.now() + 500;
+    insidePortals.current = new Set();
+    setTransition({ phase: "cooldown", error: "", portal: null, pending: null, sourcePosition: null });
+  }, [persist, transition.pending]);
+
   useEffect(() => {
     if (state.screen !== "dungeon" || !state.selectedMap) return;
     let cancelled = false;
-    void loadRuntimeMap(state.selectedMap).then((loaded) => {
+    const load = loadFlowMap("vanlang", state.selectedMap).then((envelope) => ({ document: envelope.document, fallback: false })).catch((error) => state.selectedMap === "vanlang" ? loadRuntimeMap("vanlang") : Promise.reject(error));
+    void load.then((loaded) => {
       if (cancelled) return;
       setMapLoadError("");
       setMapDocument(loaded.document);
@@ -189,6 +246,25 @@ export default function VanlangGameShell({
     }).catch((caught) => { if (!cancelled) setMapLoadError(caught instanceof Error ? caught.message : "Không thể tải map."); });
     return () => { cancelled = true; };
   }, [state.screen, state.selectedMap, persist]);
+
+  useEffect(() => {
+    if (!mapDocument || state.screen !== "dungeon") return;
+    const current = new Set(mapDocument.portals.filter((portal) => portal.enabled && Math.hypot(state.playerPos.x - portal.trigger.center.x, state.playerPos.y - portal.trigger.center.z) <= portal.trigger.radius).map((portal) => portal.id));
+    if (portalMapRef.current !== mapDocument.mapId) {
+      portalMapRef.current = mapDocument.mapId;
+      insidePortals.current = current;
+      return;
+    }
+    if (transition.phase === "cooldown") {
+      if (Date.now() >= cooldownUntil.current && current.size === 0) setTransition({ phase: "idle", error: "", portal: null, pending: null, sourcePosition: null });
+    } else if (transition.phase === "idle") {
+      const entered = mapDocument.portals.find((portal) => portal.enabled && current.has(portal.id) && !insidePortals.current.has(portal.id));
+      if (entered) beginPortalTransition(entered);
+    }
+    insidePortals.current = current;
+  }, [beginPortalTransition, mapDocument, state.playerPos.x, state.playerPos.y, state.screen, transition.phase]);
+
+  useEffect(() => () => { transitionLoading.current = false; transitionAbort.current?.abort(); transitionToken.current += 1; }, []);
 
   const ensureAudioContext = useCallback(() => {
     if (typeof window === "undefined") return null;
@@ -250,7 +326,7 @@ export default function VanlangGameShell({
     return stopAmbient;
   }, [state.musicEnabled, state.soundEnabled, startAmbient, stopAmbient]);
 
-  const movementLocked = Boolean(dialog || dungeonDrawer || !rebirthComplete);
+  const movementLocked = Boolean(dialog || dungeonDrawer || !rebirthComplete || transition.phase === "loading");
   const movePlayer = useCallback(
     (dx: number, dy: number, step = MOVEMENT_STEP, saveImmediately = true) => {
       if (movementLocked) return;
@@ -576,10 +652,11 @@ export default function VanlangGameShell({
     if (mapLoadError) return <main id="noi-dung-chinh" className="game-root"><section className="panel"><h1>Không thể mở map</h1><p role="alert">{mapLoadError}</p><button onClick={moveToMap}>Quay lại Bản đồ Ký Ức</button></section></main>;
     if (!mapDocument) return <main id="noi-dung-chinh" className="game-root"><p role="status">Đang tải dữ liệu map…</p></main>;
     return (
+      <>
       <VanlangDungeonScreen
         mapDocument={mapDocument}
         mapFallbackActive={mapFallbackActive}
-        mapName={activeMap.name}
+        mapName={activeMap?.name ?? state.selectedMap ?? "Map"}
         playerPos={state.playerPos}
         facing={playerFacing}
         isMoving={isPlayerMoving}
@@ -606,6 +683,10 @@ export default function VanlangGameShell({
         onCollectGuideCodex={collectGuideCodex}
         onAnswerBoss={answerBoss}
       />
+      {transition.pending ? <div className="portal-preload" aria-hidden="true"><VanlangDungeonWorld mapDocument={transition.pending.document} playerPos={{ x: transition.pending.entry.position.x, y: transition.pending.entry.position.z }} facing={transition.pending.entry.facingDeg * Math.PI / 180} isMoving={false} onSceneReady={commitPendingTransition} onSceneError={failPendingTransition} /></div> : null}
+      {transition.phase === "loading" ? <div className="portal-transition-overlay" role="status">Đang tải map đích… Input đã khóa.</div> : null}
+      {transition.error ? <div className="portal-transition-error" role="alert"><span>{transition.error}. Bạn vẫn ở map nguồn.</span><button onClick={() => transition.portal && beginPortalTransition(transition.portal)}>Thử lại</button></div> : null}
+      </>
     );
   }
 

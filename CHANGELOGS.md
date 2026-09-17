@@ -6,6 +6,9 @@ Tài liệu này ghi nhận các thay đổi đáng chú ý theo từng phiên b
 
 ### Added
 
+- Thêm Map Flow PR 1: clone map thành revision 1, graph node/portal/entry point có snapshot revision, Save Flow PostgreSQL atomic với ETag/validation, và runtime transition có preload, rollback, cooldown cùng persistence qua refresh.
+- Bổ sung viewport Overlay 3D cho walkable/collider theo transform runtime, kéo/chọn/chèn vector point trực tiếp đồng bộ với viewport 2D, tạo nhanh vùng chữ nhật, nhập tọa độ X/Z thủ công và nút Lưu map luôn hiện trên header.
+- Các script migration và seed backend tự nạp cấu hình local từ `.env.local`.
 - Thêm Map Editor Mode end-to-end cho map document dùng chung: asset/scene inspector, transform 2D/3D, walkable polygon, collider overlay, dirty state và save revision có ETag.
 - Thêm chế độ chuyển đổi giữa viewport chỉnh vùng 2D và preview GLB 3D dùng đúng camera, model, NPC cùng transform của runtime.
 - Thêm package `@van-lang/map-contract` chứa schema Zod V1, semantic validation, collision geometry và fixture canonical Văn Lang dùng chung cho frontend/backend.
@@ -45,6 +48,7 @@ Tài liệu này ghi nhận các thay đổi đáng chú ý theo từng phiên b
 
 ### Fixed
 
+- Chặn trigger portal overlap và khóa đồng bộ transition in-flight để tránh double dispatch, bounce loop hoặc mất map/vị trí nguồn khi tải map đích lỗi hay refresh giữa chừng.
 - Harden Map Editor/runtime trước dữ liệu map lỗi, save đồng thời/thất bại, dirty navigation, polygon không hợp lệ, coordinate drift khi resize và collision tunneling/recovery với collider transform hoặc chồng lấn.
 - Xoay phép chiếu điều khiển theo camera đấu trường để W/S đối nhau 180°, A/D lệch đúng ±90° và hướng mặt nhân vật khớp với chuyển động.
 - Hiển thị toàn bộ map 2D trong cùng khung 16:9 với lớp 3D, thu nhỏ nhân vật/NPC/HUD, khôi phục màu thanh máu và làm mượt chuyển động WASD liên tục.

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
+import { upgradeMapDocument } from "@van-lang/map-contract";
 import { projectToNavmesh } from "../../frontend/src/app/_components/vanlang-navmesh";
 
 const evidenceDir = "artifacts/ui-evidence";
@@ -302,6 +303,89 @@ test("malformed API map enters an explicit bundled-data degraded state without b
   await page.keyboard.press("ArrowRight");
   await expect(page.getByRole("main", { name: "Phó bản Văn Lang" })).toBeVisible();
   await page.screenshot({ path: `${evidenceDir}/07-map-fallback-degraded-pass.png`, fullPage: true });
+});
+
+test("portal transition commits after target ready, persists refresh, and rolls back failed load", async ({ page }) => {
+  await mkdir(evidenceDir, { recursive: true });
+  const fixture = JSON.parse(await readFile("packages/map-contract/maps/vanlang.v1.json", "utf8"));
+  const source = upgradeMapDocument(fixture);
+  source.portals = [{ id: "to-second", enabled: true, trigger: { type: "circle", center: { x: 0, z: 0.28 }, radius: 0.13 }, target: { mapId: "second-map", entryPointId: "arrival" } }];
+  const target = { ...upgradeMapDocument(fixture), mapId: "second-map", metadata: { ...source.metadata, name: "Map thứ hai" }, navigation: { ...source.navigation, entryPoints: [{ id: "arrival", position: { x: 1, z: 1 }, facingDeg: 90 }] }, portals: [{ id: "back-to-source", enabled: true, trigger: { type: "circle" as const, center: { x: 1, z: 1 }, radius: 0.2 }, target: { mapId: "vanlang", entryPointId: "default" } }] };
+  let targetMode: "success" | "http-error" | "invalid" | "slow" = "success";
+  let targetRequests = 0;
+  await page.route("**/api/map-flows/vanlang/maps/**", async (route) => {
+    const mapId = new URL(route.request().url()).pathname.split("/").at(-1)!;
+    if (mapId === "second-map") targetRequests += 1;
+    if (mapId === "second-map" && targetMode === "http-error") return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ code: "TARGET_LOAD_FAILED", message: "Target unavailable" }) });
+    if (mapId === "second-map" && targetMode === "invalid") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ mapId, revision: 1, etag: '"invalid"', activatedAt: new Date(0).toISOString(), document: { schemaVersion: 2, mapId } }) });
+    if (mapId === "second-map") await new Promise((resolve) => setTimeout(resolve, targetMode === "slow" ? 2_000 : 350));
+    const document = mapId === "second-map" ? target : source;
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ mapId, revision: 1, etag: `"${mapId}:1:test"`, activatedAt: new Date(0).toISOString(), document }) });
+  });
+
+  const email = `portal-${Date.now()}@example.com`;
+  await registerAndLogin(page, "Portal Tester", email);
+  await finishPrologue(page);
+  await page.evaluate((account) => localStorage.setItem(`vanlang-rebirth-seen:${account}`, "true"), email);
+  await enterDungeon(page);
+  await expect(page.getByRole("button", { name: "Bước vào ký ức" })).toBeVisible();
+  await page.getByRole("button", { name: "Bước vào ký ức" }).click();
+  await page.keyboard.press("KeyD");
+  await expect(page.getByText("Đang tải map đích… Input đã khóa.")).toBeVisible();
+  await page.keyboard.press("KeyD");
+  await page.keyboard.press("KeyD");
+  expect(targetRequests).toBe(1);
+  await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem("vanlang-game-mock-v4") ?? "{}").selectedMap)).toBe("second-map");
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("vanlang-game-mock-v4") ?? "{}").playerPos)).toEqual({ x: 1, y: 1 });
+  await page.waitForTimeout(700);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("vanlang-game-mock-v4") ?? "{}").selectedMap)).toBe("second-map");
+  expect(targetRequests).toBeLessThanOrEqual(2);
+  await page.screenshot({ path: `${evidenceDir}/08-portal-transition-pass.png`, fullPage: true });
+
+  await page.reload();
+  await page.getByRole("button", { name: "Tiếp tục" }).click();
+  await expect(page.getByRole("main", { name: "Phó bản Văn Lang" })).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("vanlang-game-mock-v4") ?? "{}").selectedMap)).toBe("second-map");
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("vanlang-game-mock-v4") ?? "{}").playerPos)).toEqual({ x: 1, y: 1 });
+
+  targetMode = "http-error";
+  await page.evaluate(() => {
+    const current = JSON.parse(localStorage.getItem("vanlang-game-mock-v4") ?? "{}");
+    localStorage.setItem("vanlang-game-mock-v4", JSON.stringify({ ...current, screen: "dungeon", selectedMap: "vanlang", playerPos: { x: 0, y: 0 } }));
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Tiếp tục" }).click();
+  await expect(page.getByRole("main", { name: "Phó bản Văn Lang" })).toBeVisible();
+  await page.waitForTimeout(500);
+  await page.keyboard.press("KeyD");
+  await expect(page.getByText(/Bạn vẫn ở map nguồn/)).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("vanlang-game-mock-v4") ?? "{}").selectedMap)).toBe("vanlang");
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("vanlang-game-mock-v4") ?? "{}").playerPos)).toEqual({ x: 0, y: 0.28 });
+  await page.screenshot({ path: `${evidenceDir}/09-portal-transition-rollback.png`, fullPage: true });
+
+  targetMode = "invalid";
+  await page.reload();
+  await page.getByRole("button", { name: "Tiếp tục" }).click();
+  await expect(page.getByRole("main", { name: "Phó bản Văn Lang" })).toBeVisible();
+  await page.keyboard.press("KeyA");
+  await page.keyboard.press("KeyD");
+  await expect(page.getByText(/Bạn vẫn ở map nguồn/)).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("vanlang-game-mock-v4") ?? "{}").selectedMap)).toBe("vanlang");
+
+  targetMode = "slow";
+  await page.reload();
+  await page.getByRole("button", { name: "Tiếp tục" }).click();
+  await expect(page.getByRole("main", { name: "Phó bản Văn Lang" })).toBeVisible();
+  await page.keyboard.press("KeyA");
+  await page.keyboard.press("KeyD");
+  await expect(page.getByText("Đang tải map đích… Input đã khóa.")).toBeVisible();
+  const sourceBeforeRefresh = await page.evaluate(() => JSON.parse(localStorage.getItem("vanlang-game-mock-v4") ?? "{}"));
+  await page.reload();
+  await page.getByRole("button", { name: "Tiếp tục" }).click();
+  await expect(page.getByRole("main", { name: "Phó bản Văn Lang" })).toBeVisible();
+  const sourceAfterRefresh = await page.evaluate(() => JSON.parse(localStorage.getItem("vanlang-game-mock-v4") ?? "{}"));
+  expect(sourceAfterRefresh.selectedMap).toBe(sourceBeforeRefresh.selectedMap);
+  expect(sourceAfterRefresh.playerPos).toEqual(sourceBeforeRefresh.playerPos);
 });
 
 

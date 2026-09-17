@@ -1,21 +1,27 @@
 "use client";
 
-import type { MapDocument, MapObject } from "@van-lang/map-contract";
+import { colliderFootprint, type MapDocument, type MapObject, type Vec2 } from "@van-lang/map-contract";
 import { ContactShadows, Html, useAnimations, useGLTF } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Component, Suspense, useEffect, useMemo, useRef } from "react";
-import type { ReactNode } from "react";
-import { BufferGeometry, Float32BufferAttribute, Group, MathUtils, Mesh } from "three";
+import type { PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "react";
+import { BufferGeometry, DoubleSide, Float32BufferAttribute, Group, MathUtils, Mesh, Plane, Raycaster, Shape, Vector2, Vector3 } from "three";
 import { dungeonNpcs } from "./vanlang-mock-data";
 
-type DungeonWorldProps = { mapDocument: MapDocument; playerPos: { x: number; y: number }; facing: number; isMoving: boolean; onSceneReady?: () => void };
+type EditorOverlayConfig = {
+  selectedPolygonId: string | null;
+  onPolygonSelect?: (polygonId: string) => void;
+  onPointMove?: (polygonId: string, index: number, point: Vec2) => void;
+  onPointInsert?: (polygonId: string, index: number, point: Vec2) => void;
+};
+type DungeonWorldProps = { mapDocument: MapDocument; playerPos: { x: number; y: number }; facing: number; isMoving: boolean; onSceneReady?: () => void; onSceneError?: () => void; editorOverlay?: EditorOverlayConfig };
 const HERO_MODEL = "/models/vanlang-rebirth/hero.runtime.glb";
 const radians = (degrees: number) => degrees * Math.PI / 180;
 
-class SceneErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+class SceneErrorBoundary extends Component<{ children: ReactNode; onError?: () => void }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
-  componentDidCatch() { /* Static background remains visible. */ }
+componentDidCatch() { this.props.onError?.(); }
   render() { return this.state.failed ? <div className="dungeon-world-fallback" role="status">Cảnh 3D tạm thời không khả dụng. Bạn vẫn có thể mở nhật ký hoặc trở về Bản đồ Ký Ức.</div> : this.props.children; }
 }
 
@@ -88,16 +94,91 @@ function SceneReady({ onReady }: { onReady?: () => void }) {
   return null;
 }
 
+function OverlayPolygon({ points, color, groundY, onSelect }: { points: Vec2[]; color: string; groundY: number; onSelect?: () => void }) {
+  const shape = useMemo(() => {
+    const result = new Shape();
+    points.forEach((point, index) => index === 0 ? result.moveTo(point.x, point.z) : result.lineTo(point.x, point.z));
+    result.closePath();
+    return result;
+  }, [points]);
+  return <mesh position={[0, groundY + 0.035, 0]} rotation={[Math.PI / 2, 0, 0]} renderOrder={1000} onClick={(event) => { event.stopPropagation(); onSelect?.(); }}><shapeGeometry args={[shape]} /><meshBasicMaterial color={color} transparent opacity={0.42} side={DoubleSide} depthWrite={false} polygonOffset polygonOffsetFactor={-2} /></mesh>;
+}
+
+function OverlayPointHandle({ point, groundY, rootRef, label, midpoint = false, onSelect, onMove, onInsert }: {
+  point: Vec2;
+  groundY: number;
+  rootRef: RefObject<Group | null>;
+  label: string;
+  midpoint?: boolean;
+  onSelect: () => void;
+  onMove?: (point: Vec2) => void;
+  onInsert?: () => void;
+}) {
+  const { camera, gl } = useThree();
+  const raycaster = useMemo(() => new Raycaster(), []);
+  const pointer = useMemo(() => new Vector2(), []);
+  const worldHit = useMemo(() => new Vector3(), []);
+  const plane = useMemo(() => new Plane(), []);
+  const planeA = useMemo(() => new Vector3(), []);
+  const planeB = useMemo(() => new Vector3(), []);
+  const planeC = useMemo(() => new Vector3(), []);
+  const pointFromPointer = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const root = rootRef.current;
+    if (!root) return null;
+    const bounds = gl.domElement.getBoundingClientRect();
+    pointer.set((event.clientX - bounds.left) / bounds.width * 2 - 1, -(event.clientY - bounds.top) / bounds.height * 2 + 1);
+    raycaster.setFromCamera(pointer, camera);
+    root.updateWorldMatrix(true, false);
+    planeA.set(0, groundY, 0).applyMatrix4(root.matrixWorld);
+    planeB.set(1, groundY, 0).applyMatrix4(root.matrixWorld);
+    planeC.set(0, groundY, 1).applyMatrix4(root.matrixWorld);
+    plane.setFromCoplanarPoints(planeA, planeB, planeC);
+    if (!raycaster.ray.intersectPlane(plane, worldHit)) return null;
+    const local = root.worldToLocal(worldHit.clone());
+    return { x: local.x, z: local.z };
+  };
+  return <Html center position={[point.x, groundY + 0.12, point.z]} zIndexRange={[30, 20]}>
+    <button
+      type="button"
+      className={`overlay-point-handle${midpoint ? " is-midpoint" : ""}`}
+      aria-label={label}
+      onClick={(event) => { event.stopPropagation(); if (midpoint) onInsert?.(); else onSelect(); }}
+      onPointerDown={(event) => { event.stopPropagation(); onSelect(); if (!midpoint) event.currentTarget.setPointerCapture(event.pointerId); }}
+      onPointerMove={(event) => { if (midpoint || !event.currentTarget.hasPointerCapture(event.pointerId)) return; const next = pointFromPointer(event); if (next) onMove?.(next); }}
+      onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }}
+    />
+  </Html>;
+}
+
+function EditorOverlay({ document, config, rootRef }: { document: MapDocument; config: EditorOverlayConfig; rootRef: RefObject<Group | null> }) {
+  const footprints = document.objects.map((object) => ({ id: object.id, footprint: colliderFootprint(object) })).filter((item) => item.footprint);
+  return <group name="map-editor-overlay">
+    {document.navigation.walkablePolygons.filter((polygon) => polygon.enabled).map((polygon) => <group key={polygon.id}>
+      <OverlayPolygon points={polygon.points} color={polygon.id === config.selectedPolygonId ? "#ffc55b" : "#48e692"} groundY={document.world.groundY} onSelect={() => config.onPolygonSelect?.(polygon.id)} />
+      {polygon.points.map((point, index) => <OverlayPointHandle key={index} point={point} groundY={document.world.groundY} rootRef={rootRef} label={`Di chuyển điểm ${index + 1} của ${polygon.id}`} onSelect={() => config.onPolygonSelect?.(polygon.id)} onMove={(next) => config.onPointMove?.(polygon.id, index, next)} />)}
+      {polygon.id === config.selectedPolygonId ? polygon.points.map((point, index) => {
+        const next = polygon.points[(index + 1) % polygon.points.length];
+        const midpoint = { x: (point.x + next.x) / 2, z: (point.z + next.z) / 2 };
+        return <OverlayPointHandle key={`insert-${index}`} point={midpoint} groundY={document.world.groundY} rootRef={rootRef} label={`Chèn điểm sau điểm ${index + 1} của ${polygon.id}`} midpoint onSelect={() => config.onPolygonSelect?.(polygon.id)} onInsert={() => config.onPointInsert?.(polygon.id, index + 1, midpoint)} />;
+      }) : null}
+    </group>)}
+    {footprints.map(({ id, footprint }) => footprint?.type === "circle"
+      ? <mesh key={id} position={[footprint.center.x, document.world.groundY + 0.055, footprint.center.z]} rotation={[Math.PI / 2, 0, 0]} renderOrder={1001}><circleGeometry args={[footprint.radius, 48]} /><meshBasicMaterial color="#ff5757" transparent opacity={0.58} side={DoubleSide} depthWrite={false} /></mesh>
+      : footprint?.type === "polygon" ? <OverlayPolygon key={id} points={footprint.points} color="#ff5757" groundY={document.world.groundY + 0.02} /> : null)}
+  </group>;
+}
+
 function RebirthArena(props: DungeonWorldProps) {
   const document = props.mapDocument;
   const root = document.world.rootTransform;
+  const rootRef = useRef<Group>(null);
   const models = document.objects.filter((object): object is Extract<MapObject, { kind: "model3d" }> => object.kind === "model3d" && object.enabled).sort((a, b) => a.renderOrder - b.renderOrder || a.id.localeCompare(b.id));
-  return <><ambientLight intensity={1.8} color="#f7e1ba" /><hemisphereLight intensity={1.5} color="#fff0d0" groundColor="#2b1d16" /><directionalLight position={[5, 10, 7]} intensity={2.6} color="#ffe0a3" castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} /><CameraRig document={document} /><group position={[root.position.x, root.position.y, root.position.z]} rotation={[radians(root.rotationDeg.x), radians(root.rotationDeg.y), radians(root.rotationDeg.z)]} scale={[root.scale.x, root.scale.y, root.scale.z]}><NavmeshSurface document={document} /><Suspense fallback={null}>{models.filter((object) => !object.binding).map((object) => <MapModel key={object.id} object={object} />)}{models.filter((object) => object.binding).map((object) => { const npc = dungeonNpcs.find((item) => item.id === object.binding?.entityId); return npc ? <NpcBeacon key={object.id} name={npc.name} isBoss={npc.role === "boss"} position={object.transform3d.position} /> : null; })}<PlayerAvatar {...props} /><SceneReady onReady={props.onSceneReady} /></Suspense><ContactShadows position={[0, document.world.groundY + 0.01, 0]} opacity={0.32} scale={11} blur={2.2} far={4} /></group></>;
+  return <><ambientLight intensity={1.8} color="#f7e1ba" /><hemisphereLight intensity={1.5} color="#fff0d0" groundColor="#2b1d16" /><directionalLight position={[5, 10, 7]} intensity={2.6} color="#ffe0a3" castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} /><CameraRig document={document} /><group ref={rootRef} position={[root.position.x, root.position.y, root.position.z]} rotation={[radians(root.rotationDeg.x), radians(root.rotationDeg.y), radians(root.rotationDeg.z)]} scale={[root.scale.x, root.scale.y, root.scale.z]}><NavmeshSurface document={document} /><Suspense fallback={null}>{models.filter((object) => !object.binding).map((object) => <MapModel key={object.id} object={object} />)}{models.filter((object) => object.binding).map((object) => { const npc = dungeonNpcs.find((item) => item.id === object.binding?.entityId); return npc ? <NpcBeacon key={object.id} name={npc.name} isBoss={npc.role === "boss"} position={object.transform3d.position} /> : null; })}<PlayerAvatar {...props} /><SceneReady onReady={props.onSceneReady} /></Suspense>{props.editorOverlay ? <EditorOverlay document={document} config={props.editorOverlay} rootRef={rootRef} /> : null}<ContactShadows position={[0, document.world.groundY + 0.01, 0]} opacity={0.32} scale={11} blur={2.2} far={4} /></group></>;
 }
 
 export function VanlangDungeonWorld(props: DungeonWorldProps) {
   const camera = props.mapDocument.world.camera;
-  return <SceneErrorBoundary><div className="dungeon-world" aria-label="Đấu trường chuyển sinh Văn Lang 3D"><Canvas shadows dpr={[1, 1.35]} camera={{ position: [camera.position.x, camera.position.y, camera.position.z], fov: camera.fovDeg, near: camera.near, far: camera.far }} gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }} onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}><RebirthArena {...props} /></Canvas></div></SceneErrorBoundary>;
+  return <SceneErrorBoundary onError={props.onSceneError}><div className="dungeon-world" aria-label="Đấu trường chuyển sinh Văn Lang 3D"><Canvas shadows dpr={[1, 1.35]} camera={{ position: [camera.position.x, camera.position.y, camera.position.z], fov: camera.fovDeg, near: camera.near, far: camera.far }} gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }} onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}><RebirthArena {...props} /></Canvas></div></SceneErrorBoundary>;
 }
 
 useGLTF.preload(HERO_MODEL);
