@@ -1,0 +1,105 @@
+@import url("https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap");
+
+.world-map-screen {
+  min-height: 100svh;
+  overflow: hidden;
+  color: #efe8d8;
+  background: #0a0d0b;
+  font-family: "Be Vietnam Pro", "Segoe UI", sans-serif;
+}
+
+.world-map-canvas { position: relative; isolation: isolate; width: 100vw; height: 100svh; overflow: hidden; }
+.world-map-art { z-index: -4; object-fit: cover; object-position: center; filter: blur(8px) saturate(.58) brightness(.52); transform: scale(1.08); transition: filter 1200ms ease, transform 1400ms cubic-bezier(.2,.7,.2,1); }
+.world-map-screen.is-revealed .world-map-art { filter: blur(0) saturate(.88) brightness(.76); transform: scale(1.01); }
+.world-map-vignette { position: absolute; inset: 0; z-index: -2; background: radial-gradient(circle at 50% 45%, transparent 38%, rgba(3, 5, 4, .62) 100%), linear-gradient(to bottom, rgba(4, 7, 5, .54), transparent 20%, transparent 72%, rgba(4, 6, 5, .72)); pointer-events: none; }
+
+.map-back-button { position: absolute; z-index: 15; top: clamp(18px, 3vh, 34px); left: clamp(16px, 2.5vw, 38px); min-width: 170px; min-height: 52px; display: inline-flex; align-items: center; gap: 11px; border: 1px solid rgba(215,184,117,.6); color: #eee4cf; background: linear-gradient(110deg, rgba(12,16,13,.94), rgba(31,32,23,.82)); box-shadow: 0 10px 28px rgba(0,0,0,.34), inset 0 0 0 1px rgba(255,255,255,.035); padding: 8px 14px; text-align: left; cursor: pointer; backdrop-filter: blur(10px); transition: border-color 180ms ease, color 180ms ease, transform 180ms ease, box-shadow 180ms ease; }
+.map-back-button::after { content: ""; position: absolute; right: 7px; bottom: 5px; left: 7px; height: 1px; background: linear-gradient(90deg, transparent, rgba(215,184,117,.5), transparent); }
+.map-back-button svg { width: 22px; height: 22px; flex: 0 0 auto; fill: none; stroke: #d7b875; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.map-back-button span { display: grid; gap: 1px; font-family: "Playfair Display", Georgia, serif; font-size: 14px; font-weight: 700; line-height: 1.15; }
+.map-back-button small { color: #b9ad91; font-family: "Be Vietnam Pro", "Segoe UI", sans-serif; font-size: 8px; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; }
+.map-back-button:hover { border-color: #e3c47f; color: #fff7e6; box-shadow: 0 12px 34px rgba(0,0,0,.42), 0 0 18px rgba(215,184,117,.13); transform: translateY(-2px); }
+.map-back-button:focus-visible { outline: 2px solid #f0d493; outline-offset: 3px; }
+.map-back-button:active { transform: translateY(0); }
+
+.map-corner { position: absolute; z-index: 4; width: clamp(150px, 23vw, 390px); height: auto; opacity: 0; pointer-events: none; filter: drop-shadow(0 6px 16px rgba(0,0,0,.4)); transition: opacity 700ms ease 500ms, transform 900ms ease 400ms; }
+.map-corner.top-left { top: -5%; left: -3%; transform: translate(-24px, -24px); }
+.map-corner.top-right { top: -5%; right: -3%; transform: translate(24px, -24px); }
+.map-corner.bottom-left { bottom: -8%; left: -3%; transform: translate(-24px, 24px); }
+.map-corner.bottom-right { right: -3%; bottom: -8%; transform: translate(24px, 24px); }
+.world-map-screen.is-revealed .map-corner { opacity: .9; transform: translate(0, 0); }
+
+.world-map-heading { position: absolute; z-index: 5; top: clamp(22px, 4vh, 48px); left: 50%; width: min(82vw, 760px); text-align: center; transform: translateX(-50%); opacity: 0; transition: opacity 600ms ease 450ms, transform 700ms ease 450ms; }
+.world-map-screen.is-revealed .world-map-heading { opacity: 1; transform: translate(-50%, 0); }
+.world-map-heading p { margin: 0 0 5px; color: #d7b875; font-size: 10px; font-weight: 700; letter-spacing: .34em; text-transform: uppercase; text-shadow: 0 2px 8px #000; }
+.world-map-heading h1 { max-width: none; margin: 0; color: #f0dca9; font-family: "Playfair Display", Georgia, serif; font-size: clamp(36px, 4vw, 68px); line-height: 1; text-shadow: 0 3px 16px #000; }
+
+.dynasty-layers { position: absolute; inset: 0; z-index: 3; opacity: 0; pointer-events: none; transition: opacity 350ms ease 650ms; }
+.world-map-screen.is-revealed .dynasty-layers { opacity: 1; pointer-events: auto; }
+.dynasty-node { position: absolute; width: clamp(112px, 12vw, 218px); aspect-ratio: 1; display: grid; place-items: center; border: 0; color: #efe8d8; background: transparent; padding: 0; cursor: pointer; opacity: 0; transform: translate(-50%, -42%) scale(.72); transition: opacity 480ms ease var(--layer-delay), transform 620ms cubic-bezier(.2,.8,.2,1) var(--layer-delay), filter 220ms ease; }
+.world-map-screen.is-revealed .dynasty-node { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.dynasty-node img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 9px 10px rgba(0,0,0,.55)); transition: transform 240ms ease, filter 240ms ease; }
+.dynasty-node > .dynasty-name { position: absolute; z-index: 4; left: 50%; bottom: 3%; width: max-content; max-width: 130%; transform: translateX(-50%); border: 1px solid rgba(199, 159, 88, .42); color: #f5ead0; background: rgba(12, 15, 12, .86); padding: 4px 9px; font-family: "Playfair Display", Georgia, serif; font-size: clamp(10px, .85vw, 14px); line-height: 1.2; text-shadow: 0 2px 5px #000; }
+.dynasty-node.locked { filter: saturate(.3) brightness(.72); }
+.dynasty-node.locked:hover, .dynasty-node.locked:focus-visible { z-index: 11; filter: saturate(.52) brightness(.88); }
+.dynasty-lock { position: absolute; z-index: 3; inset: 14%; display: grid; place-items: center; pointer-events: none; filter: saturate(1.5); }
+.dynasty-chain { position: absolute; width: 128%; height: 15px; background: radial-gradient(ellipse at center, transparent 0 27%, #d0a65a 31% 43%, #513319 48% 59%, transparent 64%) 0 50% / 17px 12px repeat-x; filter: drop-shadow(0 2px 2px rgba(0,0,0,.9)); }
+.dynasty-chain.chain-left { transform: rotate(42deg); }
+.dynasty-chain.chain-right { transform: rotate(-42deg); }
+.dynasty-lock svg { position: relative; z-index: 2; width: clamp(30px, 2.8vw, 46px); height: auto; overflow: visible; border-radius: 50%; fill: #3d2815; stroke: #f1ce7f; stroke-width: 2; filter: drop-shadow(0 4px 6px #000) drop-shadow(0 0 8px rgba(213,165,80,.45)); }
+.dynasty-lock svg rect { fill: #704a24; }
+.dynasty-tooltip { position: absolute; z-index: 12; top: 89%; left: 50%; width: max-content; max-width: 190px; display: grid; gap: 3px; visibility: hidden; border: 1px solid rgba(225,190,111,.65); color: #ede1c6; background: linear-gradient(115deg, rgba(12,14,11,.97), rgba(48,37,21,.96)); box-shadow: 0 10px 28px rgba(0,0,0,.52), inset 0 0 0 1px rgba(255,244,210,.04); padding: 9px 13px; text-align: center; pointer-events: none; opacity: 0; transform: translate(-50%, 8px); transition: opacity 160ms ease, transform 180ms ease, visibility 0s linear 180ms; }
+.dynasty-tooltip::before { content: ""; position: absolute; top: -5px; left: 50%; width: 8px; height: 8px; border-top: 1px solid rgba(225,190,111,.65); border-left: 1px solid rgba(225,190,111,.65); background: #171610; transform: translateX(-50%) rotate(45deg); }
+.dynasty-tooltip small { color: #dbb768; font-size: 8px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; }
+.dynasty-tooltip strong { font-family: "Playfair Display", Georgia, serif; font-size: 12px; font-weight: 600; line-height: 1.25; }
+.dynasty-node.locked:hover .dynasty-tooltip, .dynasty-node.locked:focus-visible .dynasty-tooltip { visibility: visible; opacity: 1; transform: translate(-50%, 0); transition-delay: 0s; }
+.dynasty-node:hover img, .dynasty-node:focus-visible img, .dynasty-node.selected img { transform: scale(1.08); filter: drop-shadow(0 0 15px rgba(220,181,105,.58)) drop-shadow(0 9px 10px rgba(0,0,0,.5)); }
+.dynasty-node:focus-visible { outline: 2px solid #f0d493; outline-offset: 3px; }
+.dynasty-node.selected > .dynasty-name { border-color: #d7b875; color: white; }
+
+.map-lore { position: absolute; z-index: 7; left: 50%; bottom: clamp(18px, 3vh, 38px); width: min(900px, calc(100vw - 44px)); min-height: 100px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 28px; border-top: 1px solid rgba(215,184,117,.58); color: #e9e3d7; background: linear-gradient(90deg, rgba(11,14,12,.94), rgba(20,23,18,.84)); box-shadow: 0 16px 45px rgba(0,0,0,.45); padding: 15px 20px; transform: translate(-50%, 24px); opacity: 0; pointer-events: none; transition: opacity 480ms ease 900ms, transform 520ms ease 900ms; }
+.world-map-screen.is-revealed .map-lore { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.map-lore p { margin: 0 0 3px; color: #c7a568; font-size: 9px; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; }
+.map-lore h2 { margin: 0 0 4px; font-family: "Playfair Display", Georgia, serif; font-size: clamp(19px, 2vw, 28px); }
+.map-lore span { display: block; max-width: 680px; color: #c9c4b9; font-size: 12px; line-height: 1.45; }
+.map-lore button { min-height: 48px; border: 1px solid #d7b875; color: #17150f; background: linear-gradient(100deg, #b98743, #e2c27b, #ad7938); padding: 8px 18px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.map-lore strong { color: #aaa59b; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+
+.cloud-reveal { position: absolute; inset: 0; z-index: 12; overflow: hidden; background: rgba(10,13,11,.22); pointer-events: none; transition: visibility 0s linear 1350ms, background-color 500ms ease; }
+.world-map-screen.is-revealed .cloud-reveal { visibility: hidden; pointer-events: none; background: transparent; }
+.cloud-band { position: absolute; width: 76vw; height: 33vh; border-radius: 50%; background: radial-gradient(ellipse at center, rgba(232,230,218,.94) 0 24%, rgba(191,195,184,.78) 48%, rgba(96,106,99,.18) 70%, transparent 73%); filter: blur(18px); transition: transform 1350ms cubic-bezier(.4,0,.2,1), opacity 1150ms ease; }
+.cloud-one { top: -8%; left: -13%; }
+.cloud-two { top: 18%; right: -15%; }
+.cloud-three { bottom: 12%; left: -19%; }
+.cloud-four { right: -18%; bottom: -11%; }
+.world-map-screen.is-revealed .cloud-one, .world-map-screen.is-revealed .cloud-three { transform: translateX(-115%) scale(1.12); opacity: 0; }
+.world-map-screen.is-revealed .cloud-two, .world-map-screen.is-revealed .cloud-four { transform: translateX(115%) scale(1.12); opacity: 0; }
+@media (max-width: 760px) {
+  .world-map-art { object-position: center; }
+  .map-corner { width: 38vw; opacity: 0; }
+  .map-corner.bottom-left, .map-corner.bottom-right { bottom: 17%; }
+  .world-map-heading { top: 24px; }
+  .map-back-button { min-width: 48px; min-height: 48px; padding: 10px 12px; }
+  .map-back-button span { display: none; }
+  .world-map-heading h1 { font-size: 36px; }
+  .dynasty-node { width: clamp(88px, 26vw, 120px); }
+  .dynasty-node > .dynasty-name { max-width: 112px; font-size: 9px; white-space: normal; }
+  .dynasty-tooltip { max-width: 150px; padding: 7px 9px; }
+  .dynasty-tooltip strong { font-size: 10px; }
+  .dynasty-node:nth-child(1) { left: 14% !important; top: 61% !important; }
+  .dynasty-node:nth-child(2) { left: 29% !important; top: 37% !important; }
+  .dynasty-node:nth-child(3) { left: 39% !important; top: 60% !important; }
+  .dynasty-node:nth-child(4) { left: 49% !important; top: 28% !important; }
+  .dynasty-node:nth-child(5) { left: 64% !important; top: 17% !important; }
+  .dynasty-node:nth-child(6) { left: 66% !important; top: 58% !important; }
+  .dynasty-node:nth-child(7) { left: 79% !important; top: 34% !important; }
+  .dynasty-node:nth-child(8) { left: 86% !important; top: 64% !important; }
+  .map-lore { bottom: 12px; min-height: 145px; grid-template-columns: 1fr; gap: 10px; padding: 13px 15px; }
+  .map-lore span { display: none; }
+  .map-lore button { width: 100%; min-height: 44px; }
+  .cloud-band { width: 100vw; height: 38vh; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .world-map-art, .map-back-button, .map-corner, .world-map-heading, .dynasty-layers, .dynasty-node, .dynasty-tooltip, .map-lore, .cloud-reveal, .cloud-band { transition-duration: .01ms !important; transition-delay: 0ms !important; }
+}

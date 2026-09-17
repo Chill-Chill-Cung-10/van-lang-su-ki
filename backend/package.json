@@ -9,10 +9,14 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "lint": "tsc --noEmit --pretty false",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/**/*.test.ts",
+    "db:migrate": "tsx src/server/db/migrate.ts",
+    "db:seed:maps": "tsx src/server/db/seed-maps.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.972.0",
+    "@van-lang/map-contract": "workspace:*",
     "@fastify/cors": "^11.3.0",
     "drizzle-orm": "^0.44.0",
     "fastify": "^5.12.4",

@@ -14,6 +14,11 @@ export function getDb() {
   return database!;
 }
 
+export function getPool() {
+  getDb();
+  return pool!;
+}
+
 export async function closeDb() {
   await pool?.end();
   pool = undefined;

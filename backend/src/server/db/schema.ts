@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, numeric, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 
 export const playerProfiles = pgTable("player_profiles", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -31,4 +31,33 @@ export const questProgress = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [unique("quest_progress_player_quest_key").on(table.playerId, table.questId)],
+);
+
+export const maps = pgTable("maps", {
+  mapId: text("map_id").primaryKey(),
+  displayName: text("display_name").notNull(),
+  description: text("description").notNull().default(""),
+  thumbnailSrc: text("thumbnail_src"),
+  activeRevisionId: uuid("active_revision_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const mapRevisions = pgTable(
+  "map_revisions",
+  {
+    id: uuid("id").notNull().defaultRandom(),
+    mapId: text("map_id").notNull().references(() => maps.mapId, { onDelete: "restrict" }),
+    revision: integer("revision").notNull(),
+    schemaVersion: integer("schema_version").notNull(),
+    document: jsonb("document").notNull(),
+    checksum: text("checksum").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.id] }),
+    unique("map_revisions_map_revision_key").on(table.mapId, table.revision),
+    unique("map_revisions_map_id_id_key").on(table.mapId, table.id),
+  ],
 );

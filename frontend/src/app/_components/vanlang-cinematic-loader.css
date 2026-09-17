@@ -1,0 +1,116 @@
+@import url("https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap");
+
+.vanlang-cinematic {
+  position: relative;
+  isolation: isolate;
+  width: 100vw;
+  height: 100svh;
+  overflow: hidden;
+  color: #efe8d8;
+  background: #111312;
+  font-family: "Be Vietnam Pro", "Segoe UI", sans-serif;
+}
+
+.cinematic-scene {
+  z-index: -4;
+  object-fit: cover;
+  object-position: center;
+  filter: saturate(.82) brightness(.72);
+  animation: cinematic-arrive 7s cubic-bezier(.2,.65,.2,1) both;
+}
+
+.cinematic-shade {
+  position: absolute;
+  inset: 0;
+  z-index: -3;
+  background:
+    linear-gradient(90deg, rgba(5,8,7,.86) 0%, rgba(8,10,8,.62) 34%, rgba(7,9,8,.12) 68%, rgba(5,7,6,.24) 100%),
+    linear-gradient(180deg, rgba(4,6,5,.42), transparent 30%, transparent 68%, rgba(4,6,5,.76));
+}
+
+.cinematic-mist {
+  position: absolute;
+  z-index: -2;
+  width: 86vw;
+  height: 24vh;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(222,220,201,.25), rgba(169,174,158,.08) 48%, transparent 72%);
+  filter: blur(24px);
+  pointer-events: none;
+}
+
+.mist-near { right: -24vw; bottom: 5vh; animation: mist-near 8s ease-in-out infinite alternate; }
+.mist-far { top: 4vh; left: 22vw; opacity: .55; animation: mist-far 11s ease-in-out infinite alternate; }
+
+.cinematic-copy {
+  position: absolute;
+  top: clamp(76px, 12vh, 132px);
+  left: clamp(36px, 7vw, 136px);
+  width: min(47vw, 720px);
+  text-shadow: 0 3px 16px rgba(0,0,0,.7);
+  animation: cinematic-copy-in 900ms ease 420ms both;
+}
+
+.cinematic-chapter { display: flex; align-items: center; width: min(320px, 100%); gap: 12px; }
+.cinematic-chapter span { height: 1px; flex: 1; background: linear-gradient(90deg, transparent, #cfa35a); }
+.cinematic-chapter span:last-child { background: linear-gradient(90deg, #cfa35a, transparent); }
+.cinematic-chapter p { margin: 0; color: #dfc483; font-size: 10px; font-weight: 700; letter-spacing: .25em; text-transform: uppercase; white-space: nowrap; }
+
+.cinematic-copy h1 {
+  width: max-content;
+  max-width: 100%;
+  margin: 14px 0 5px;
+  color: #d9b66c;
+  background: linear-gradient(180deg, #f1d99e 4%, #cfa35a 48%, #8a6238 100%);
+  background-clip: text;
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: clamp(68px, 9vw, 126px);
+  font-weight: 700;
+  line-height: .92;
+  letter-spacing: .015em;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,.65));
+  animation: title-ember 3.2s ease-in-out infinite alternate;
+}
+
+.cinematic-divider { width: min(290px, 74%); display: flex; align-items: center; gap: 8px; margin: 22px 0 18px; }
+.cinematic-divider i { height: 1px; flex: 1; background: linear-gradient(90deg, #8a6238, #e3c27d); }
+.cinematic-divider i:last-child { background: linear-gradient(90deg, #e3c27d, #8a6238); }
+.cinematic-divider b { width: 10px; height: 10px; border: 1px solid #d6af68; transform: rotate(45deg); box-shadow: inset 0 0 0 2px rgba(8,10,8,.8); }
+.cinematic-copy h2 { margin: 0 0 14px; color: #f2e8d3; font-family: "Playfair Display", Georgia, serif; font-size: clamp(22px, 2.2vw, 35px); font-weight: 600; line-height: 1.2; }
+.cinematic-body { max-width: 620px; margin: 0; color: #d2c8b6; font-family: "Playfair Display", Georgia, serif; font-size: clamp(15px, 1.25vw, 21px); line-height: 1.6; }
+
+.cinematic-loading {
+  position: absolute;
+  right: clamp(28px, 6vw, 112px);
+  bottom: clamp(32px, 7vh, 76px);
+  width: min(420px, calc(100vw - 56px));
+  animation: cinematic-copy-in 700ms ease 850ms both;
+}
+
+.cinematic-loading-copy { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 9px; }
+.cinematic-loading-copy span { color: #e2d7c2; font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+.cinematic-loading-copy strong { color: #e3c27d; font-family: "Playfair Display", Georgia, serif; font-size: 18px; }
+.cinematic-progress { position: relative; height: 3px; overflow: hidden; background: rgba(239,232,216,.18); box-shadow: 0 0 0 1px rgba(0,0,0,.32); }
+.cinematic-progress span { position: absolute; inset: 0; background: linear-gradient(90deg, #8a6238, #e3c27d, #f3dda4); box-shadow: 0 0 14px rgba(227,194,125,.55); transform-origin: left; transition: transform 240ms ease; }
+.cinematic-loading > small { display: block; margin-top: 9px; color: rgba(210,200,182,.72); font-size: 9px; letter-spacing: .06em; }
+
+@keyframes cinematic-arrive { from { opacity: .2; transform: scale(1.08); } to { opacity: 1; transform: scale(1.01); } }
+@keyframes cinematic-copy-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes title-ember { from { filter: drop-shadow(0 4px 8px rgba(0,0,0,.65)); } to { filter: drop-shadow(0 4px 8px rgba(0,0,0,.65)) drop-shadow(0 0 12px rgba(207,163,90,.22)); } }
+@keyframes mist-near { from { transform: translateX(0) scale(1); } to { transform: translateX(-8vw) scale(1.08); } }
+@keyframes mist-far { from { transform: translateX(0); } to { transform: translateX(6vw); } }
+
+@media (max-width: 760px) {
+  .cinematic-scene { object-position: 62% center; }
+  .cinematic-shade { background: linear-gradient(180deg, rgba(5,8,7,.74), rgba(5,8,7,.38) 52%, rgba(4,6,5,.88)); }
+  .cinematic-copy { top: 10vh; left: 24px; width: calc(100vw - 48px); }
+  .cinematic-copy h1 { font-size: clamp(58px, 20vw, 88px); }
+  .cinematic-body { max-width: 88%; font-size: 15px; line-height: 1.5; }
+  .cinematic-loading { right: 24px; bottom: 34px; left: 24px; width: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cinematic-scene, .cinematic-mist, .cinematic-copy, .cinematic-loading, .cinematic-copy h1 { animation: none; }
+  .cinematic-progress span { transition-duration: .01ms; }
+}

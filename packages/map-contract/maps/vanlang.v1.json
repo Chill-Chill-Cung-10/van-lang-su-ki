@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "mapId": "vanlang",
+  "metadata": {
+    "name": "Văn Lang",
+    "description": "Phó bản mở đầu về buổi đầu dựng nước: làng ven sông, trống đồng và những cộng đồng Lạc Việt.",
+    "ariaLabel": "Phó bản Văn Lang",
+    "thumbnailSrc": "/world-map/01_van-lang-hung-vuong.webp"
+  },
+  "background": {
+    "src": "/vanlang-rebirth-arena.png",
+    "alt": "Đấu trường trống đồng Văn Lang nhìn từ góc isometric",
+    "fit": "contain",
+    "color": "#17100b",
+    "aspectRatio": 1.7777777777777777
+  },
+  "world": {
+    "groundY": 0.72,
+    "rootTransform": {
+      "position": { "x": 0, "y": 0, "z": 0 },
+      "rotationDeg": { "x": 0, "y": 135, "z": 0 },
+      "scale": { "x": 1, "y": 1, "z": 1 }
+    },
+    "camera": {
+      "position": { "x": 7.6, "y": 8.8, "z": 9.4 },
+      "target": { "x": 0, "y": 0.55, "z": 0 },
+      "fovDeg": 36,
+      "near": 0.1,
+      "far": 80
+    },
+    "ambient": { "presetId": "vanlang-warm" }
+  },
+  "navigation": {
+    "spawn": { "x": 0, "z": 0 },
+    "playerRadius": 0.05,
+    "walkablePolygons": [
+      {
+        "id": "plaza",
+        "enabled": true,
+        "points": [
+          { "x": 2.75, "z": 0 }, { "x": 2.38, "z": 1.38 }, { "x": 1.38, "z": 2.38 },
+          { "x": 0, "z": 2.75 }, { "x": -1.38, "z": 2.38 }, { "x": -2.38, "z": 1.38 },
+          { "x": -2.75, "z": 0 }, { "x": -2.38, "z": -1.38 }, { "x": -1.38, "z": -2.38 },
+          { "x": 0, "z": -2.75 }, { "x": 1.38, "z": -2.38 }, { "x": 2.38, "z": -1.38 }
+        ]
+      },
+      { "id": "route-timekeeper", "enabled": true, "points": [{ "x": -1.45, "z": -2.05 }, { "x": -2.05, "z": -1.45 }, { "x": -4.95, "z": -4.35 }, { "x": -4.35, "z": -4.95 }] },
+      { "id": "route-mentor", "enabled": true, "points": [{ "x": -2.05, "z": 1.45 }, { "x": -1.45, "z": 2.05 }, { "x": -3.75, "z": 4.35 }, { "x": -4.35, "z": 3.75 }] },
+      { "id": "route-gate", "enabled": true, "points": [{ "x": 1.25, "z": 2.15 }, { "x": 2.15, "z": 1.25 }, { "x": 5.15, "z": 4.25 }, { "x": 4.25, "z": 5.15 }] }
+    ]
+  },
+  "objects": [
+    {
+      "id": "arena", "name": "Đấu trường Văn Lang", "kind": "model3d", "enabled": true, "renderLayer": "world3d", "renderOrder": 0,
+      "src": "/models/vanlang-rebirth/arena.runtime.glb",
+      "transform3d": { "position": { "x": 0, "y": 0, "z": 0 }, "rotationDeg": { "x": 0, "y": 0, "z": 0 }, "scale": { "x": 6.1, "y": 6.1, "z": 6.1 } },
+      "castShadow": true, "receiveShadow": true, "collider": { "type": "none" }
+    },
+    {
+      "id": "npc-timekeeper", "name": "Huyền Quan Canh Thời", "kind": "model3d", "enabled": true, "renderLayer": "world3d", "renderOrder": 10,
+      "src": "/models/vanlang-rebirth/hero.runtime.glb", "binding": { "type": "npc", "entityId": "timekeeper" },
+      "transform3d": { "position": { "x": -2.5, "y": 0.72, "z": -2.5 }, "rotationDeg": { "x": 0, "y": 0, "z": 0 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+      "castShadow": true, "receiveShadow": true, "collider": { "type": "none" }
+    },
+    {
+      "id": "npc-guide", "name": "Sử quan Tuyên", "kind": "model3d", "enabled": true, "renderLayer": "world3d", "renderOrder": 11,
+      "src": "/models/vanlang-rebirth/hero.runtime.glb", "binding": { "type": "npc", "entityId": "guide" },
+      "transform3d": { "position": { "x": 1.5, "y": 0.72, "z": 1.5 }, "rotationDeg": { "x": 0, "y": 0, "z": 0 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+      "castShadow": true, "receiveShadow": true, "collider": { "type": "none" }
+    },
+    {
+      "id": "npc-mentor", "name": "Nghệ nhân Trống Đồng", "kind": "model3d", "enabled": true, "renderLayer": "world3d", "renderOrder": 12,
+      "src": "/models/vanlang-rebirth/hero.runtime.glb", "binding": { "type": "npc", "entityId": "mentor" },
+      "transform3d": { "position": { "x": -1.5, "y": 0.72, "z": 2.5 }, "rotationDeg": { "x": 0, "y": 0, "z": 0 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+      "castShadow": true, "receiveShadow": true, "collider": { "type": "none" }
+    },
+    {
+      "id": "npc-boss", "name": "Thử thách Ký Ức Hùng Vương", "kind": "model3d", "enabled": true, "renderLayer": "world3d", "renderOrder": 13,
+      "src": "/models/vanlang-rebirth/hero.runtime.glb", "binding": { "type": "npc", "entityId": "boss" },
+      "transform3d": { "position": { "x": 2.5, "y": 0.72, "z": -1.5 }, "rotationDeg": { "x": 0, "y": 0, "z": 0 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+      "castShadow": true, "receiveShadow": true, "collider": { "type": "none" }
+    }
+  ]
+}

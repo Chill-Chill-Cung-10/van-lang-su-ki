@@ -17,9 +17,14 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "check": "pnpm lint && pnpm typecheck && pnpm build",
+    "test:e2e": "playwright test",
     "services:up": "docker compose up -d db minio minio-init mailpit adminer",
     "services:down": "docker compose down",
     "services:logs": "docker compose logs -f",
     "services:reset": "docker compose down -v"
+  },
+  "devDependencies": {
+    "@gltf-transform/cli": "4.5.0",
+    "@playwright/test": "1.63.0"
   }
 }

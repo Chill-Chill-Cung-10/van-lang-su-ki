@@ -1,184 +1,103 @@
 "use client";
 
-import { Clone, ContactShadows, useAnimations, useGLTF } from "@react-three/drei";
+import type { MapDocument, MapObject } from "@van-lang/map-contract";
+import { ContactShadows, Html, useAnimations, useGLTF } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Suspense, useEffect, useMemo, useRef } from "react";
-import type { Group } from "three";
+import { Component, Suspense, useEffect, useMemo, useRef } from "react";
+import type { ReactNode } from "react";
+import { BufferGeometry, Float32BufferAttribute, Group, MathUtils, Mesh } from "three";
 import { dungeonNpcs } from "./vanlang-mock-data";
 
-type Vector3 = [number, number, number];
+type DungeonWorldProps = { mapDocument: MapDocument; playerPos: { x: number; y: number }; facing: number; isMoving: boolean; onSceneReady?: () => void };
+const HERO_MODEL = "/models/vanlang-rebirth/hero.runtime.glb";
+const radians = (degrees: number) => degrees * Math.PI / 180;
 
-type DungeonWorldProps = {
-  playerPos: { x: number; y: number };
-  selectedCharacterId: string;
-  motionKey: number;
-};
+class SceneErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch() { /* Static background remains visible. */ }
+  render() { return this.state.failed ? <div className="dungeon-world-fallback" role="status">Cảnh 3D tạm thời không khả dụng. Bạn vẫn có thể mở nhật ký hoặc trở về Bản đồ Ký Ức.</div> : this.props.children; }
+}
 
-type PropSpec = {
-  src: string;
-  position: Vector3;
-  rotation?: Vector3;
-  scale?: number;
-};
-
-const modelRoot = "/models/vanlang";
-
-const scenery: PropSpec[] = [
-  { src: `${modelRoot}/tree-high.glb`, position: [-5.4, 0, -4.2], scale: 1.4 },
-  { src: `${modelRoot}/tree.glb`, position: [-3.8, 0, -4.7], rotation: [0, 0.8, 0], scale: 1.2 },
-  { src: `${modelRoot}/tree-high.glb`, position: [4.9, 0, -4], rotation: [0, -0.5, 0], scale: 1.25 },
-  { src: `${modelRoot}/tree.glb`, position: [5.6, 0, 3.8], rotation: [0, 1.2, 0], scale: 1.25 },
-  { src: `${modelRoot}/tree.glb`, position: [-5.5, 0, 3.8], rotation: [0, -1, 0], scale: 1.35 },
-  { src: `${modelRoot}/rock-large.glb`, position: [-4.7, 0, 1.7], rotation: [0, 0.6, 0], scale: 1.1 },
-  { src: `${modelRoot}/rock-wide.glb`, position: [4.3, 0, 2.4], rotation: [0, -0.4, 0], scale: 1.05 },
-  { src: `${modelRoot}/fence.glb`, position: [-2.7, 0, 4.6], rotation: [0, 1.57, 0], scale: 1.2 },
-  { src: `${modelRoot}/fence.glb`, position: [-1.2, 0, 4.6], rotation: [0, 1.57, 0], scale: 1.2 },
-  { src: `${modelRoot}/fence-gate.glb`, position: [0.4, 0, 4.6], rotation: [0, 1.57, 0], scale: 1.2 },
-  { src: `${modelRoot}/cart.glb`, position: [3.2, 0, -2.8], rotation: [0, -0.75, 0], scale: 1.1 },
-];
-
-const worldPosition = (x: number, y: number): Vector3 => [(x - 3.5) * 1.05, 0, (y - 3.5) * 0.92];
-
-function CameraRig() {
+function CameraRig({ document }: { document: MapDocument }) {
   const { camera } = useThree();
-
-  useFrame(() => {
-    camera.lookAt(0, 0.45, 0);
-  });
-
+  useEffect(() => { camera.position.set(document.world.camera.position.x, document.world.camera.position.y, document.world.camera.position.z); camera.lookAt(document.world.camera.target.x, document.world.camera.target.y, document.world.camera.target.z); camera.updateProjectionMatrix(); }, [camera, document]);
   return null;
 }
 
-function SceneryProp({ src, position, rotation = [0, 0, 0], scale = 1 }: PropSpec) {
-  const { scene } = useGLTF(src);
-
-  return <Clone object={scene} position={position} rotation={rotation} scale={scale} castShadow receiveShadow />;
+function MapModel({ object }: { object: Extract<MapObject, { kind: "model3d" }> }) {
+  const loaded = useGLTF(object.src);
+  const scene = useMemo(() => loaded.scene.clone(true), [loaded.scene]);
+  useEffect(() => { scene.traverse((node) => { if (node instanceof Mesh) { node.castShadow = object.castShadow; node.receiveShadow = object.receiveShadow; } }); }, [object.castShadow, object.receiveShadow, scene]);
+  const transform = object.transform3d;
+  return <primitive object={scene} position={[transform.position.x, transform.position.y, transform.position.z]} rotation={[radians(transform.rotationDeg.x), radians(transform.rotationDeg.y), radians(transform.rotationDeg.z)]} scale={[transform.scale.x, transform.scale.y, transform.scale.z]} renderOrder={object.renderOrder} />;
 }
 
-function VillageHouse({ position, rotation = 0 }: { position: Vector3; rotation?: number }) {
-  const { scene: wall } = useGLTF(`${modelRoot}/wall-wood-block.glb`);
-  const { scene: roof } = useGLTF(`${modelRoot}/roof-gable.glb`);
-
-  return (
-    <group position={position} rotation={[0, rotation, 0]} scale={1.3}>
-      <Clone object={wall} castShadow receiveShadow />
-      <Clone object={roof} position={[0, 1.25, 0]} castShadow receiveShadow />
-    </group>
-  );
-}
-
-function NpcBeacon({ position, isBoss }: { position: Vector3; isBoss: boolean }) {
-  return (
-    <group position={position}>
-      <mesh position={[0, 0.15, 0]} castShadow>
-        <cylinderGeometry args={[0.17, 0.24, 0.3, 8]} />
-        <meshStandardMaterial color={isBoss ? "#c99a40" : "#4bb7ad"} emissive={isBoss ? "#4d2f08" : "#0a403b"} />
-      </mesh>
-      <mesh position={[0, 0.72, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.22, 0.035, 10, 24]} />
-        <meshBasicMaterial color={isBoss ? "#ffd978" : "#9bf6ee"} />
-      </mesh>
-    </group>
-  );
-}
-
-function PlayerAvatar({ source, position, motionKey }: { source: string; position: Vector3; motionKey: number }) {
-  const group = useRef<Group>(null);
-  const { scene, animations } = useGLTF(source);
-  const { actions } = useAnimations(animations, group);
-
-  useEffect(() => {
-    scene.traverse((node) => {
-      node.castShadow = true;
-      node.receiveShadow = true;
+function NavmeshSurface({ document }: { document: MapDocument }) {
+  const geometry = useMemo(() => {
+    const vertices = document.navigation.walkablePolygons.filter((polygon) => polygon.enabled).flatMap((polygon) => {
+      const triangles: number[] = [];
+      for (let index = 1; index < polygon.points.length - 1; index += 1) {
+        for (const point of [polygon.points[0], polygon.points[index], polygon.points[index + 1]]) triangles.push(point.x, document.world.groundY, point.z);
+      }
+      return triangles;
     });
-  }, [scene]);
-
-  useEffect(() => {
-    const idle = actions.combat_idle;
-    idle?.reset().fadeIn(0.2).play();
-
-    return () => {
-      idle?.fadeOut(0.15);
-    };
-  }, [actions]);
-
-  useEffect(() => {
-    if (!motionKey) return;
-
-    const run = actions.combat_run;
-    const idle = actions.combat_idle;
-    run?.reset().fadeIn(0.1).play();
-    const timer = window.setTimeout(() => {
-      run?.fadeOut(0.12);
-      idle?.reset().fadeIn(0.12).play();
-    }, 360);
-
-    return () => window.clearTimeout(timer);
-  }, [actions, motionKey]);
-
-  return (
-    <group ref={group} position={[position[0], 0.96, position[2]]} rotation={[0, Math.PI, 0]} scale={1.18}>
-      <primitive object={scene} />
-    </group>
-  );
+    const result = new BufferGeometry();
+    result.setAttribute("position", new Float32BufferAttribute(vertices, 3));
+    result.computeVertexNormals();
+    return result;
+  }, [document]);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  return <mesh geometry={geometry} visible={false}><meshBasicMaterial /></mesh>;
 }
 
-function VillageScene({ playerPos, selectedCharacterId, motionKey }: DungeonWorldProps) {
-  const playerSource = useMemo(
-    () =>
-      selectedCharacterId === "hero-linh"
-        ? "/models/ve-binh-ao-luc.optimized.glb"
-        : "/models/chien-binh-giap-do.optimized.glb",
-    [selectedCharacterId],
-  );
+function NpcBeacon({ name, position, isBoss }: { name: string; position: { x: number; y: number; z: number }; isBoss: boolean }) {
+  return <group position={[position.x, position.y, position.z]}><mesh position={[0, 0.12, 0]} castShadow><cylinderGeometry args={[0.09, 0.14, 0.24, 8]} /><meshStandardMaterial color={isBoss ? "#a73b29" : "#9d7435"} emissive={isBoss ? "#49140d" : "#493117"} /></mesh><mesh position={[0, 0.48, 0]} rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.14, 0.025, 10, 28]} /><meshBasicMaterial color={isBoss ? "#ff9b73" : "#f4cf83"} /></mesh><Html center position={[0, 0.76, 0]} distanceFactor={5.5} zIndexRange={[2, 0]}><span className={`dungeon-npc-label ${isBoss ? "is-boss" : ""}`} aria-hidden="true">{name}</span></Html></group>;
+}
 
-  return (
-    <>
-      <color attach="background" args={["#071616"]} />
-      <fog attach="fog" args={["#071616", 12, 23]} />
-      <hemisphereLight intensity={1.1} color="#d6f6e9" groundColor="#102c26" />
-      <directionalLight position={[7, 10, 6]} intensity={2.3} color="#ffd99a" castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} />
-      <directionalLight position={[-5, 4, -3]} intensity={0.8} color="#72dad1" />
-      <CameraRig />
+function PlayerAvatar({ mapDocument, playerPos, facing, isMoving }: DungeonWorldProps) {
+  const group = useRef<Group>(null);
+  const initialized = useRef(false);
+  const locomotionSpeed = useRef(0);
+  const { scene, animations } = useGLTF(HERO_MODEL);
+  const { actions } = useAnimations(animations, group);
+  useEffect(() => { scene.traverse((node) => { if (node instanceof Mesh) { node.castShadow = true; node.receiveShadow = true; } }); }, [scene]);
+  useEffect(() => { const idle = actions.Idle; const walk = actions.Walk; const run = actions.Run; idle?.reset().setEffectiveWeight(1).play(); walk?.reset().setEffectiveWeight(0).play(); run?.reset().setEffectiveWeight(0).play(); return () => { idle?.stop(); walk?.stop(); run?.stop(); }; }, [actions]);
+  useFrame((_, delta) => {
+    if (!group.current) return;
+    const avatar = group.current;
+    if (!initialized.current) { avatar.position.set(playerPos.x, mapDocument.world.groundY, playerPos.y); avatar.rotation.y = facing; initialized.current = true; return; }
+    const previousX = avatar.position.x; const previousZ = avatar.position.z;
+    avatar.position.x = MathUtils.damp(avatar.position.x, playerPos.x, 12, delta);
+    avatar.position.z = MathUtils.damp(avatar.position.z, playerPos.y, 12, delta);
+    const frameSpeed = Math.hypot(avatar.position.x - previousX, avatar.position.z - previousZ) / Math.max(delta, 0.001);
+    locomotionSpeed.current = MathUtils.damp(locomotionSpeed.current, isMoving ? frameSpeed : 0, 10, delta);
+    const idleWeight = 1 - MathUtils.smoothstep(locomotionSpeed.current, 0.08, 0.42);
+    const runWeight = MathUtils.smoothstep(locomotionSpeed.current, 1.35, 2.2);
+    actions.Idle?.setEffectiveWeight(idleWeight);
+    actions.Walk?.setEffectiveWeight(Math.max(0, 1 - idleWeight - runWeight)).setEffectiveTimeScale(MathUtils.clamp(locomotionSpeed.current / 1.15, 0.65, 1.25));
+    actions.Run?.setEffectiveWeight(runWeight).setEffectiveTimeScale(MathUtils.clamp(locomotionSpeed.current / 2.4, 0.72, 1.18));
+    const rotationDelta = Math.atan2(Math.sin(facing - avatar.rotation.y), Math.cos(facing - avatar.rotation.y));
+    avatar.rotation.y += rotationDelta * (1 - Math.exp(-18 * delta));
+  });
+  return <group ref={group} position={[0, mapDocument.world.groundY, 0]} scale={0.54}><primitive object={scene} /></group>;
+}
 
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <circleGeometry args={[8.3, 64]} />
-        <meshStandardMaterial color="#375b3e" roughness={0.95} />
-      </mesh>
-      <mesh position={[0, 0.012, -0.45]} rotation={[-Math.PI / 2, 0.08, 0]} receiveShadow>
-        <planeGeometry args={[12, 1.45]} />
-        <meshStandardMaterial color="#2c8680" roughness={0.35} metalness={0.1} />
-      </mesh>
+function SceneReady({ onReady }: { onReady?: () => void }) {
+  useEffect(() => { onReady?.(); }, [onReady]);
+  return null;
+}
 
-      <Suspense fallback={null}>
-        {scenery.map((prop) => (
-          <SceneryProp key={`${prop.src}-${prop.position.join("-")}`} {...prop} />
-        ))}
-        <VillageHouse position={[-2.8, 0, -1.7]} rotation={0.35} />
-        <VillageHouse position={[1.8, 0, 2.55]} rotation={-0.55} />
-        {dungeonNpcs.map((npc) => (
-          <NpcBeacon key={npc.id} position={worldPosition(npc.x, npc.y)} isBoss={npc.role === "boss"} />
-        ))}
-        <PlayerAvatar key={playerSource} source={playerSource} position={worldPosition(playerPos.x, playerPos.y)} motionKey={motionKey} />
-      </Suspense>
-
-      <ContactShadows position={[0, 0.01, 0]} opacity={0.36} scale={13} blur={2.4} far={5} />
-    </>
-  );
+function RebirthArena(props: DungeonWorldProps) {
+  const document = props.mapDocument;
+  const root = document.world.rootTransform;
+  const models = document.objects.filter((object): object is Extract<MapObject, { kind: "model3d" }> => object.kind === "model3d" && object.enabled).sort((a, b) => a.renderOrder - b.renderOrder || a.id.localeCompare(b.id));
+  return <><ambientLight intensity={1.8} color="#f7e1ba" /><hemisphereLight intensity={1.5} color="#fff0d0" groundColor="#2b1d16" /><directionalLight position={[5, 10, 7]} intensity={2.6} color="#ffe0a3" castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} /><CameraRig document={document} /><group position={[root.position.x, root.position.y, root.position.z]} rotation={[radians(root.rotationDeg.x), radians(root.rotationDeg.y), radians(root.rotationDeg.z)]} scale={[root.scale.x, root.scale.y, root.scale.z]}><NavmeshSurface document={document} /><Suspense fallback={null}>{models.filter((object) => !object.binding).map((object) => <MapModel key={object.id} object={object} />)}{models.filter((object) => object.binding).map((object) => { const npc = dungeonNpcs.find((item) => item.id === object.binding?.entityId); return npc ? <NpcBeacon key={object.id} name={npc.name} isBoss={npc.role === "boss"} position={object.transform3d.position} /> : null; })}<PlayerAvatar {...props} /><SceneReady onReady={props.onSceneReady} /></Suspense><ContactShadows position={[0, document.world.groundY + 0.01, 0]} opacity={0.32} scale={11} blur={2.2} far={4} /></group></>;
 }
 
 export function VanlangDungeonWorld(props: DungeonWorldProps) {
-  return (
-    <div className="dungeon-world" aria-label="Phó bản 3D Văn Lang">
-      <Canvas
-        shadows
-        dpr={[1, 1.25]}
-        camera={{ position: [8.8, 8.2, 10.5], fov: 38 }}
-        gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
-      >
-        <VillageScene {...props} />
-      </Canvas>
-    </div>
-  );
+  const camera = props.mapDocument.world.camera;
+  return <SceneErrorBoundary><div className="dungeon-world" aria-label="Đấu trường chuyển sinh Văn Lang 3D"><Canvas shadows dpr={[1, 1.35]} camera={{ position: [camera.position.x, camera.position.y, camera.position.z], fov: camera.fovDeg, near: camera.near, far: camera.far }} gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }} onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}><RebirthArena {...props} /></Canvas></div></SceneErrorBoundary>;
 }
+
+useGLTF.preload(HERO_MODEL);

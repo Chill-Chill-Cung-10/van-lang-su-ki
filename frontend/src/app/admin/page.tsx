@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 const modules = [
   ["Kho tri thức", "Quản lý tài liệu lịch sử đã được giáo viên kiểm duyệt."],
   ["Ngân hàng câu hỏi", "Soạn, duyệt và phát hành câu hỏi theo Knowledge ID."],
@@ -16,6 +18,11 @@ export default function AdminPage() {
         </p>
       </header>
       <section className="admin-grid" aria-label="Các phân hệ quản trị">
+        <article>
+          <h2>Editor Mode</h2>
+          <p>Chỉnh scene, vùng đi được và collider của map đang hoạt động.</p>
+          <Link className="button button-secondary" href="/admin/maps">Mở Map Editor</Link>
+        </article>
         {modules.map(([title, description]) => (
           <article key={title}>
             <h2>{title}</h2>

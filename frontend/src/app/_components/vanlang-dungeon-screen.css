@@ -1,0 +1,449 @@
+.rebirth-arena {
+  --wuxia-ink: #110d0a;
+  --wuxia-panel: rgba(24, 17, 12, 0.94);
+  --wuxia-gold: #e8c77f;
+  --wuxia-gold-bright: #ffe7aa;
+  --wuxia-red: #a7392b;
+  --wuxia-paper: #f4ead1;
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  height: 100svh;
+  min-height: 100svh;
+  overflow: hidden;
+  color: var(--wuxia-paper);
+  background: #17100c;
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.rebirth-arena::before {
+  content: "";
+  position: absolute;
+  inset: -24px;
+  z-index: -5;
+  background: linear-gradient(rgba(11, 8, 6, 0.35), rgba(11, 8, 6, 0.35)),
+    url("/vanlang-rebirth-arena.png") center / cover no-repeat;
+  filter: blur(18px) brightness(0.55);
+  transform: scale(1.04);
+}
+
+.rebirth-arena-stage {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: -3;
+  width: min(100vw, calc(100svh * 16 / 9));
+  height: min(100svh, calc(100vw * 9 / 16));
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+}
+
+.rebirth-arena-background {
+  z-index: 0;
+  object-fit: contain;
+  object-position: center;
+}
+
+.map-sprite { position: absolute; object-fit: contain; pointer-events: none; }
+.map-sprite.underlay2d { z-index: 1; }
+.map-sprite.overlay2d { z-index: 4; }
+.map-fallback-status { position: fixed; left: 12px; bottom: 10px; z-index: 20; margin: 0; padding: 5px 8px; border-radius: 4px; background: rgba(20, 12, 8, .78); color: #f2c879; font-size: 11px; }
+
+.rebirth-arena-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 48%, transparent 35%, rgba(12, 7, 5, 0.35) 72%, rgba(8, 5, 4, 0.78) 100%);
+}
+
+.rebirth-arena .dungeon-world {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  min-height: 0;
+  background: transparent;
+}
+
+.rebirth-arena .dungeon-world canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.dungeon-world-loading,
+.dungeon-world-fallback {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: #f3dfb4;
+  text-align: center;
+  text-shadow: 0 2px 8px #000;
+}
+
+.dungeon-npc-label {
+  display: block;
+  width: max-content;
+  max-width: 132px;
+  padding: 3px 7px;
+  border: 1px solid rgba(232, 199, 127, 0.7);
+  border-radius: 999px;
+  color: #fff3d5;
+  background: rgba(20, 13, 9, 0.82);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.45);
+  font: 700 10px/1.2 ui-sans-serif, system-ui, sans-serif;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.dungeon-npc-label.is-boss {
+  border-color: rgba(255, 137, 98, 0.8);
+  color: #ffd0bd;
+}
+
+.rebirth-hud {
+  position: absolute;
+  top: max(14px, env(safe-area-inset-top));
+  left: max(14px, env(safe-area-inset-left));
+  z-index: 5;
+  width: clamp(230px, 22vw, 330px);
+  aspect-ratio: 980 / 552;
+  pointer-events: none;
+}
+
+.rebirth-hud::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: url("/ui/wuxia/character_hud_panel.png") center / contain no-repeat;
+}
+
+.rebirth-hud-copy {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.rebirth-hud-copy > strong {
+  position: absolute;
+  top: 12.3%;
+  left: 33.7%;
+  width: 32.7%;
+  height: 8.7%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: #f7dfaa;
+  font-size: clamp(11px, 1vw, 16px);
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  text-shadow: 0 2px 4px #000;
+  white-space: nowrap;
+}
+
+.rebirth-health {
+  position: absolute;
+  top: 28.6%;
+  left: 30.6%;
+  width: 60%;
+  height: 17.4%;
+  display: grid;
+  place-items: center;
+}
+
+.rebirth-health::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: url("/ui/wuxia/health_frame_glow.png") center / 100% 100% no-repeat;
+}
+
+.rebirth-health > span {
+  position: absolute;
+  inset: 26% 8% 25%;
+  z-index: 3;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #72150f, #d33d25 65%, #ff8b55);
+  box-shadow: 0 0 12px rgba(235, 72, 39, 0.75);
+}
+
+.rebirth-health > b {
+  position: relative;
+  z-index: 4;
+  font: 700 clamp(9px, 0.85vw, 13px)/1 ui-sans-serif, system-ui, sans-serif;
+  text-shadow: 0 1px 4px #000;
+}
+
+.dungeon-quickbar {
+  position: absolute;
+  top: max(18px, env(safe-area-inset-top));
+  right: max(18px, env(safe-area-inset-right));
+  z-index: 6;
+  display: flex;
+  gap: 10px;
+}
+
+.dungeon-quickbar button,
+.npc-interact-prompt,
+.touch-controls button,
+.wuxia-primary,
+.wuxia-secondary,
+.boss-question button,
+.drawer-close {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid rgba(232, 199, 127, 0.58);
+  color: #f6e6be;
+  background: linear-gradient(145deg, rgba(38, 25, 16, 0.96), rgba(77, 48, 27, 0.94));
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.38), inset 0 0 0 1px rgba(255, 238, 194, 0.07);
+  cursor: pointer;
+  transition: border-color 180ms ease, color 180ms ease, transform 180ms ease, background-color 180ms ease;
+}
+
+.dungeon-quickbar button {
+  width: 68px;
+  padding: 7px 6px;
+  display: grid;
+  place-items: center;
+  gap: 3px;
+  border-radius: 8px;
+}
+
+.dungeon-quickbar svg,
+.touch-interact svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+
+.dungeon-quickbar span,
+.touch-interact span {
+  font: 700 11px/1 ui-sans-serif, system-ui, sans-serif;
+}
+
+.dungeon-quickbar button:hover,
+.npc-interact-prompt:hover,
+.wuxia-primary:hover,
+.wuxia-secondary:hover,
+.boss-question button:hover {
+  border-color: var(--wuxia-gold-bright);
+  color: #fff7df;
+  transform: translateY(-2px);
+}
+
+.rebirth-arena button:focus-visible {
+  outline: 3px solid #fff6db;
+  outline-offset: 3px;
+}
+
+.npc-interact-prompt {
+  position: absolute;
+  left: 50%;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  z-index: 7;
+  min-width: min(390px, calc(100% - 32px));
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  font: 700 14px/1.35 ui-sans-serif, system-ui, sans-serif;
+}
+
+.npc-interact-prompt:hover { transform: translateX(-50%) translateY(-2px); }
+.npc-interact-prompt kbd { padding: 5px 8px; border: 1px solid #a78851; border-radius: 5px; background: #140e0a; }
+
+.touch-controls {
+  display: none;
+}
+
+.dungeon-dialogue-layer,
+.dungeon-drawer-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(to bottom, rgba(8, 5, 3, 0.22), rgba(8, 5, 3, 0.78));
+}
+
+.wuxia-dialogue-card {
+  position: relative;
+  box-sizing: border-box;
+  width: min(900px, 100%, calc((100svh - 32px) * 2172 / 724));
+  aspect-ratio: 2172 / 724;
+  min-height: 0;
+  max-height: calc(100svh - 32px);
+  padding: 0;
+  background: url("/ui/wuxia/dialogue_box_overlay_fx.png") center / 100% 100% no-repeat,
+    url("/ui/wuxia/dialogue_box_base.png") center / 100% 100% no-repeat;
+  filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.56));
+  animation: dialogue-rise 220ms ease-out both;
+}
+
+.wuxia-speaker {
+  position: absolute;
+  top: 7.5%;
+  left: 23.5%;
+  width: 30%;
+  height: 13%;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 0 8%;
+  overflow: hidden;
+  color: #f7dfaa;
+  background: url("/ui/wuxia/nameplate.png") center / 100% auto no-repeat;
+  font-size: clamp(15px, 1.35vw, 20px);
+  font-weight: 700;
+  text-align: center;
+  text-overflow: ellipsis;
+  text-shadow: 0 2px 4px #000;
+  white-space: nowrap;
+}
+
+.wuxia-dialogue-copy {
+  position: absolute;
+  inset: 31% 10% 23% 24%;
+  z-index: 2;
+  min-width: 0;
+  min-height: 0;
+  max-height: none;
+  padding-right: 1.5%;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  color: #f4ead5;
+  font: 400 clamp(15px, 1.3vw, 19px)/1.45 Georgia, "Times New Roman", serif;
+  text-shadow: 0 1px 3px #000;
+}
+
+.wuxia-dialogue-copy p { margin: 0 0 10px; }
+.wuxia-dialogue-actions {
+  position: absolute;
+  right: 9%;
+  bottom: 9%;
+  z-index: 3;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: 0;
+}
+.wuxia-primary,
+.wuxia-secondary { padding: 10px 18px; border-radius: 7px; font: 700 14px/1.2 ui-sans-serif, system-ui, sans-serif; }
+.wuxia-primary { color: #1c1109; background: linear-gradient(#f4d995, #b78338); }
+.wuxia-secondary { background: rgba(29, 20, 14, 0.92); }
+
+.type-cursor { display: inline-block; width: 2px; height: 1em; margin-left: 3px; vertical-align: -0.12em; background: var(--wuxia-gold-bright); animation: cursor-blink 700ms step-end infinite; }
+.dialogue-warning { color: #ffb6a3; }
+.dialogue-result { color: #d9efb2; }
+
+.boss-question { display: grid; gap: 8px; }
+.boss-question button { width: 100%; padding: 10px 12px; border-radius: 6px; text-align: left; font: 600 14px/1.45 ui-sans-serif, system-ui, sans-serif; }
+.boss-question button.is-selected { border-color: #fff0b7; background: rgba(125, 80, 33, 0.92); }
+
+.dungeon-drawer-layer {
+  align-items: stretch;
+  justify-content: flex-end;
+  padding: 0;
+  background: rgba(8, 5, 3, 0.55);
+}
+
+.dungeon-drawer {
+  position: relative;
+  width: min(430px, 92vw);
+  padding: max(72px, calc(env(safe-area-inset-top) + 54px)) 34px max(34px, env(safe-area-inset-bottom));
+  overflow: auto;
+  border-left: 1px solid rgba(232, 199, 127, 0.62);
+  background: linear-gradient(rgba(27, 18, 12, 0.9), rgba(21, 13, 9, 0.96)), url("/ui/wuxia/quest_panel.png") center / cover;
+  box-shadow: -18px 0 42px rgba(0, 0, 0, 0.52);
+  animation: drawer-in 210ms ease-out both;
+}
+
+.drawer-close { position: absolute; top: max(16px, env(safe-area-inset-top)); right: 18px; border-radius: 50%; font-size: 26px; line-height: 1; }
+.drawer-kicker { margin: 0; color: #cda55b; font: 700 11px/1.2 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.16em; text-transform: uppercase; }
+.dungeon-drawer h2 { margin: 7px 0 22px; color: #f5db9d; font-size: 30px; }
+.dungeon-drawer > p { font: 400 16px/1.6 ui-sans-serif, system-ui, sans-serif; }
+.drawer-list { display: grid; gap: 10px; }
+.drawer-list article { padding: 14px; border: 1px solid rgba(223, 188, 111, 0.35); background: rgba(16, 10, 7, 0.68); }
+.drawer-list article.is-locked { opacity: 0.58; }
+.drawer-list strong { color: #f3dda9; font-size: 16px; }
+.drawer-list p { margin: 7px 0; color: #eadfc8; font: 400 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
+.drawer-list span { color: #c9e6a7; font: 700 12px/1.2 ui-sans-serif, system-ui, sans-serif; }
+.reward-tally { display: grid; gap: 12px; }
+.reward-tally p { display: flex; justify-content: space-between; padding: 14px; border-bottom: 1px solid rgba(232, 199, 127, 0.34); font: 500 16px/1.3 ui-sans-serif, system-ui, sans-serif; }
+.reward-tally strong { color: #ffe2a0; font-size: 22px; }
+.drawer-actions { display: grid; gap: 10px; margin-top: 24px; }
+
+@keyframes dialogue-rise { from { opacity: 0; transform: translateY(18px); } }
+@keyframes drawer-in { from { transform: translateX(28px); opacity: 0; } }
+@keyframes cursor-blink { 50% { opacity: 0; } }
+
+@media (max-width: 900px), (pointer: coarse) {
+  .dungeon-quickbar { top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); gap: 8px; }
+  .dungeon-quickbar button { width: 48px; }
+  .dungeon-quickbar span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .rebirth-hud { top: max(6px, env(safe-area-inset-top)); left: max(6px, env(safe-area-inset-left)); width: min(230px, 54vw); }
+  .npc-interact-prompt { display: none; }
+  .touch-controls { position: absolute; inset: auto 14px max(14px, env(safe-area-inset-bottom)); z-index: 8; display: flex; align-items: flex-end; justify-content: space-between; pointer-events: none; }
+  .touch-controls button { pointer-events: auto; touch-action: manipulation; user-select: none; }
+  .touch-dpad { width: 152px; display: grid; grid-template: repeat(2, 56px) / repeat(3, 48px); gap: 8px 4px; }
+  .touch-dpad button { border-radius: 11px; font-size: 24px; }
+  .touch-dpad button:nth-child(1) { grid-column: 2; }
+  .touch-dpad button:nth-child(2) { grid-column: 1; grid-row: 2; }
+  .touch-dpad button:nth-child(3) { grid-column: 3; grid-row: 2; }
+  .touch-dpad button:nth-child(4) { grid-column: 2; grid-row: 2; }
+  .touch-interact { width: 78px; height: 78px; display: grid; place-items: center; border-radius: 50%; }
+  .touch-interact:disabled { opacity: 0.42; cursor: not-allowed; }
+}
+
+@media (max-width: 680px) {
+  .wuxia-dialogue-card {
+    width: 100%;
+    aspect-ratio: auto;
+    min-height: 290px;
+    padding: 82px 32px 34px;
+    background-size: 136% 100%, 136% 100%;
+  }
+  .wuxia-speaker { top: 28px; left: 7%; width: 64%; height: 54px; }
+  .wuxia-dialogue-copy {
+    position: relative;
+    inset: auto;
+    max-height: 32vh;
+    padding-right: 0;
+    font-size: 16px;
+  }
+  .wuxia-dialogue-actions {
+    position: relative;
+    right: auto;
+    bottom: auto;
+    align-items: stretch;
+    flex-direction: column-reverse;
+    margin-top: 12px;
+  }
+  .wuxia-dialogue-actions button { width: 100%; }
+  .dungeon-dialogue-layer { padding: 10px; }
+  .dungeon-npc-label { max-width: 120px; font-size: 9px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rebirth-arena *,
+  .rebirth-arena *::before,
+  .rebirth-arena *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+

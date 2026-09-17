@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import VanlangGameShell from "./vanlang-game-shell";
 import { VanlangPrologue } from "./vanlang-prologue";
@@ -192,6 +193,7 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
 }
 
 function MainMenu({ account, onStart, onContinue, onLogout }: { account: Account; onStart: () => void; onContinue: () => void; onLogout: () => void }) {
+  const router = useRouter();
   const [hasSave] = useState(() => typeof window !== "undefined" && Boolean(window.localStorage.getItem(GAME_PROGRESS_KEY)));
   const [showOptions, setShowOptions] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
@@ -200,9 +202,10 @@ function MainMenu({ account, onStart, onContinue, onLogout }: { account: Account
     () => [
       ...(hasSave ? [{ label: "Tiếp tục", action: onContinue }] : []),
       { label: "Bắt đầu", action: onStart },
+      { label: "Editor Mode", action: () => router.push("/admin/maps") },
       { label: "Lựa chọn", action: () => setShowOptions(true) },
     ],
-    [hasSave, onContinue, onStart],
+    [hasSave, onContinue, onStart, router],
   );
   const [selected, setSelected] = useState(0);
 
@@ -289,7 +292,9 @@ export default function VanlangEntry() {
   const [stage, setStage] = useState<EntryStage>("menu");
   const [gameInitialScreen, setGameInitialScreen] = useState<"map" | undefined>();
 
-  if (stage === "game") return <VanlangGameShell initialScreen={gameInitialScreen} />;
+  if (stage === "game") {
+    return <VanlangGameShell accountId={account?.email ?? sessionEmail} initialScreen={gameInitialScreen} onBackToMenu={() => setStage("menu")} />;
+  }
   if (!account) {
     return <AuthScreen onAuthenticated={() => { setStage("menu"); window.dispatchEvent(new Event("vanlang-session")); }} />;
   }

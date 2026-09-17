@@ -43,3 +43,6 @@ Thumbs.db
 assets/
 .codex/
 SKILL.md
+# Approved optimized owner-provided runtime models
+!frontend/public/models/vanlang-rebirth/arena.runtime.glb
+!frontend/public/models/vanlang-rebirth/hero.runtime.glb

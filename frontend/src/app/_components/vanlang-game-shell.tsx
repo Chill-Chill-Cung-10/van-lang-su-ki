@@ -1,8 +1,14 @@
 "use client";
 
+import type { MapDocument } from "@van-lang/map-contract";
 import Image from "next/image";
-import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { VanlangCinematicLoader } from "./vanlang-cinematic-loader";
+import { VanlangDungeonScreen } from "./vanlang-dungeon-screen";
+import type { DungeonDrawer } from "./vanlang-dungeon-screen";
+import { loadRuntimeMap } from "../_lib/map-api-client";
+import { DUNGEON_SPAWN, npcPositionFromDocument, projectToNavmesh } from "./vanlang-navmesh";
+import { VanlangWorldMap } from "./vanlang-world-map";
 import "./vanlang-game-shell.css";
 import {
   battlePassTracks,
@@ -10,18 +16,11 @@ import {
   cutsceneSteps,
   dungeonNpcs,
   dungeonQuests,
-  dungeonTips,
   mapDungeons,
   playerCharacters,
 } from "./vanlang-mock-data";
 
-const VanlangDungeonWorld = dynamic(
-  () => import("./vanlang-dungeon-world").then((module) => module.VanlangDungeonWorld),
-  {
-    ssr: false,
-    loading: () => <div className="dungeon-world dungeon-world-loading" role="status" aria-label="Đang dựng phó bản 3D" />,
-  },
-);
+
 type GameScreen = "story" | "map" | "dungeon";
 type HudTab = "character" | "codex" | "leaderboard" | "battlepass";
 type CodexEntry = (typeof codexEntries)[number];
@@ -32,7 +31,6 @@ type DialogState =
   | { kind: "timekeeper" }
   | { kind: "quest"; questId: string }
   | { kind: "boss"; questId: string }
-  | { kind: "map"; mapId: string }
   | null;
 
 type ProgressState = {
@@ -51,10 +49,9 @@ type ProgressState = {
 };
 
 const STORAGE_KEY = "vanlang-game-mock-v4";
-const GRID_SIZE = 8;
-const MAX_POS = GRID_SIZE - 1;
-const START_X = 2;
-const START_Y = 3;
+const MOVEMENT_STEP = 0.28;
+const MOVEMENT_SPEED = 2.4;
+const MOVEMENT_TICK_MS = 32;
 
 const DEFAULT_STATE: ProgressState = {
   screen: "story",
@@ -64,21 +61,28 @@ const DEFAULT_STATE: ProgressState = {
   selectedCharacterId: playerCharacters[0].id,
   unlockedCodexIds: [],
   completedQuests: [],
-  playerPos: { x: START_X, y: START_Y },
+  playerPos: DUNGEON_SPAWN,
   totalSouls: 0,
   battlePassXp: 0,
   soundEnabled: true,
   musicEnabled: true,
 };
 
-const clamp = (value: number) => Math.max(0, Math.min(MAX_POS, value));
 
 const textToPercent = (current: number, total: number) => Math.round((current / Math.max(total - 1, 1)) * 100);
 
 const rewardDisplay = (value: number) => `${value} linh hồn`;
 const addUnique = (arr: string[], value: string) => (arr.includes(value) ? arr : [...arr, value]);
 
-export default function VanlangGameShell({ initialScreen }: { initialScreen?: GameScreen }) {
+export default function VanlangGameShell({
+  accountId,
+  initialScreen,
+  onBackToMenu,
+}: {
+  accountId: string;
+  initialScreen?: GameScreen;
+  onBackToMenu: () => void;
+}) {
   const [state, setState] = useState<ProgressState>(() => {
     const initialState = initialScreen ? { ...DEFAULT_STATE, screen: initialScreen } : DEFAULT_STATE;
     if (typeof window === "undefined") {
@@ -90,7 +94,13 @@ export default function VanlangGameShell({ initialScreen }: { initialScreen?: Ga
       if (!raw) {
         return initialState;
       }
-      return { ...DEFAULT_STATE, ...JSON.parse(raw), ...(initialScreen ? { screen: initialScreen } : {}) };
+      const restored = JSON.parse(raw) as Partial<ProgressState>;
+      return {
+        ...DEFAULT_STATE,
+        ...restored,
+        playerPos: projectToNavmesh(restored.playerPos ?? DUNGEON_SPAWN),
+        ...(initialScreen ? { screen: initialScreen } : {}),
+      };
     } catch {
       return initialState;
     }
@@ -101,9 +111,21 @@ export default function VanlangGameShell({ initialScreen }: { initialScreen?: Ga
   const [hudTab, setHudTab] = useState<HudTab>("character");
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [answerResult, setAnswerResult] = useState<boolean | null>(null);
-  const [playerMotion, setPlayerMotion] = useState(0);
+  const [isPlayerMoving, setIsPlayerMoving] = useState(false);
+  const [playerFacing, setPlayerFacing] = useState(Math.PI);
+  const [dungeonDrawer, setDungeonDrawer] = useState<DungeonDrawer>(null);
+  const [rebirthComplete, setRebirthComplete] = useState(() =>
+    typeof window !== "undefined" && window.localStorage.getItem(`vanlang-rebirth-seen:${accountId}`) === "true",
+  );
+  const [mapRevealed, setMapRevealed] = useState(false);
+  const [isVanLangLoading, setIsVanLangLoading] = useState(false);
+  const [mapDocument, setMapDocument] = useState<MapDocument | null>(null);
+  const [mapFallbackActive, setMapFallbackActive] = useState(false);
+  const [mapLoadError, setMapLoadError] = useState("");
+  const latestStateRef = useRef(state);
 
   const ambientTimer = useRef<number | null>(null);
+  const movementTimer = useRef<number | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
   const selectedCharacter = useMemo(
@@ -140,19 +162,33 @@ export default function VanlangGameShell({ initialScreen }: { initialScreen?: Ga
 
   const currentStep = cutsceneSteps[state.storyIndex];
   const storyPercent = textToPercent(state.storyIndex, cutsceneSteps.length);
-  const mapTip = dungeonTips[state.storyIndex % dungeonTips.length];
   const storyText = currentStep ? currentStep.text.slice(0, storyCharIndex) : "";
   const isTypingDone = Boolean(currentStep && storyCharIndex >= currentStep.text.length);
 
   const persist = useCallback((next: ProgressState | ((current: ProgressState) => ProgressState)) => {
     setState((current) => {
       const nextState = typeof next === "function" ? next(current) : next;
+      latestStateRef.current = nextState;
       if (typeof window !== "undefined") {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
       }
       return nextState;
     });
   }, []);
+
+  useEffect(() => {
+    if (state.screen !== "dungeon" || !state.selectedMap) return;
+    let cancelled = false;
+    void loadRuntimeMap(state.selectedMap).then((loaded) => {
+      if (cancelled) return;
+      setMapLoadError("");
+      setMapDocument(loaded.document);
+      setMapFallbackActive(loaded.fallback);
+      const projected = projectToNavmesh(latestStateRef.current.playerPos, loaded.document);
+      if (projected.x !== latestStateRef.current.playerPos.x || projected.y !== latestStateRef.current.playerPos.y) persist((current) => ({ ...current, playerPos: projected }));
+    }).catch((caught) => { if (!cancelled) setMapLoadError(caught instanceof Error ? caught.message : "Không thể tải map."); });
+    return () => { cancelled = true; };
+  }, [state.screen, state.selectedMap, persist]);
 
   const ensureAudioContext = useCallback(() => {
     if (typeof window === "undefined") return null;
@@ -214,19 +250,30 @@ export default function VanlangGameShell({ initialScreen }: { initialScreen?: Ga
     return stopAmbient;
   }, [state.musicEnabled, state.soundEnabled, startAmbient, stopAmbient]);
 
+  const movementLocked = Boolean(dialog || dungeonDrawer || !rebirthComplete);
   const movePlayer = useCallback(
-    (dx: number, dy: number) => {
-      persist((prev) => ({
-        ...prev,
-        playerPos: {
-          x: clamp(prev.playerPos.x + dx),
-          y: clamp(prev.playerPos.y + dy),
-        },
-      }));
-      setPlayerMotion((current) => current + 1);
-      playTone(380, 40, "square", 0.05);
+    (dx: number, dy: number, step = MOVEMENT_STEP, saveImmediately = true) => {
+      if (movementLocked) return;
+      const length = Math.hypot(dx, dy) || 1;
+      const stepX = (-dy / length) * step;
+      const stepY = (dx / length) * step;
+      const previousState = latestStateRef.current;
+      const nextState = {
+        ...previousState,
+        playerPos: projectToNavmesh({
+          x: previousState.playerPos.x + stepX,
+          y: previousState.playerPos.y + stepY,
+        }, mapDocument ?? undefined, previousState.playerPos),
+      };
+      latestStateRef.current = nextState;
+      setState(nextState);
+      if (saveImmediately) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+      setPlayerFacing(Math.atan2(stepX, stepY));
+      setIsPlayerMoving(true);
+      if (movementTimer.current != null) window.clearTimeout(movementTimer.current);
+      movementTimer.current = window.setTimeout(() => setIsPlayerMoving(false), 170);
     },
-    [persist, playTone],
+    [mapDocument, movementLocked],
   );
 
   const completeQuest = useCallback(
@@ -278,7 +325,9 @@ export default function VanlangGameShell({ initialScreen }: { initialScreen?: Ga
 
   const nearbyNpc = useMemo(() => {
     const near = (npc: Npc) => {
-      return Math.abs(npc.x - state.playerPos.x) <= 1 && Math.abs(npc.y - state.playerPos.y) <= 1;
+      const target = mapDocument ? npcPositionFromDocument(mapDocument, npc.id) : null;
+      if (!target) return false;
+      return Math.hypot(target.x - state.playerPos.x, target.y - state.playerPos.y) <= 1.35;
     };
 
     return {
@@ -287,7 +336,8 @@ export default function VanlangGameShell({ initialScreen }: { initialScreen?: Ga
       boss: npcBoss && near(npcBoss) ? npcBoss : null,
       mentor: dungeonNpcs.find((npc) => npc.role === "mentor" && near(npc)) ?? null,
     };
-  }, [npcBoss, npcGuide, npcTimekeeper, state.playerPos.x, state.playerPos.y]);
+  }, [mapDocument, npcBoss, npcGuide, npcTimekeeper, state.playerPos.x, state.playerPos.y]);
+  const nearbyNpcForPrompt = nearbyNpc.timekeeper ?? nearbyNpc.guide ?? nearbyNpc.mentor ?? nearbyNpc.boss;
 
   const interact = useCallback(() => {
     if (state.screen !== "dungeon") return;
@@ -319,34 +369,22 @@ export default function VanlangGameShell({ initialScreen }: { initialScreen?: Ga
     }
   }, [bossQuest, guideQuest, nearbyNpc.boss, nearbyNpc.guide, nearbyNpc.timekeeper, nearbyNpc.mentor, playTone, state.screen]);
 
-  const openMapChallenge = useCallback(
-    (mapId: string, isUnlocked: boolean) => {
-      if (!isUnlocked) return;
-      setDialog({ kind: "map", mapId });
-      playTone(680, 60);
-    },
-    [playTone],
-  );
-
-  const openTimekeeperGuide = useCallback(() => {
-    if (state.mapGuideSeen) {
-      return;
-    }
-
-    persist((prev) => ({ ...prev, mapGuideSeen: true }));
-    setDialog(null);
-    playTone(760, 70, "triangle", 0.06);
-  }, [persist, playTone, state.mapGuideSeen]);
-
-  const beginChallenge = useCallback(() => {
-    if (!dialog || dialog.kind !== "map") return;
-
-    persist((prev) => ({ ...prev, selectedMap: dialog.mapId, screen: "dungeon", playerPos: { x: START_X, y: 3 } }));
-    setDialog(null);
+  const enterVanLang = useCallback(() => {
+    setIsVanLangLoading(true);
     playTone(900, 70);
-  }, [dialog, persist, playTone]);
+  }, [playTone]);
+
+  const completeVanLangLoading = useCallback(() => {
+    persist((prev) => ({ ...prev, selectedMap: "vanlang", screen: "dungeon", playerPos: DUNGEON_SPAWN }));
+    setDialog(null);
+    setDungeonDrawer(null);
+    setIsVanLangLoading(false);
+  }, [persist]);
 
   const moveToMap = useCallback(() => {
+    setDialog(null);
+    setDungeonDrawer(null);
+    setIsPlayerMoving(false);
     persist((prev) => ({ ...prev, screen: "map" }));
   }, [persist]);
 
@@ -387,8 +425,15 @@ export default function VanlangGameShell({ initialScreen }: { initialScreen?: Ga
   }, [moveToMap]);
 
   const clearBoard = useCallback(() => {
-    persist((prev) => ({ ...prev, selectedMap: activeMap.id, playerPos: { x: START_X, y: START_Y } }));
-  }, [activeMap.id, persist]);
+    setDungeonDrawer(null);
+    const spawn = mapDocument ? { x: mapDocument.navigation.spawn.x, y: mapDocument.navigation.spawn.z } : DUNGEON_SPAWN;
+    persist((prev) => ({ ...prev, selectedMap: activeMap.id, playerPos: spawn }));
+  }, [activeMap.id, mapDocument, persist]);
+
+  const completeRebirth = useCallback(() => {
+    window.localStorage.setItem(`vanlang-rebirth-seen:${accountId}`, "true");
+    setRebirthComplete(true);
+  }, [accountId]);
 
   useEffect(() => {
     if (!currentStep) return;
@@ -422,41 +467,78 @@ export default function VanlangGameShell({ initialScreen }: { initialScreen?: Ga
     };
   }, [currentStep]);
   useEffect(() => {
-    const handle = (event: KeyboardEvent) => {
+    const movementVectors: Record<string, [number, number]> = {
+      w: [0, -1],
+      a: [-1, 0],
+      s: [0, 1],
+      d: [1, 0],
+    };
+    const pressed = new Set<string>();
+    let frame = 0;
+    let lastTick = performance.now();
+
+    const flushPosition = () => {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(latestStateRef.current));
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (state.screen !== "dungeon") return;
       if (event.key === "Escape") {
         setDialog(null);
+        setDungeonDrawer(null);
         return;
       }
-
-      if (dialog || state.screen !== "dungeon") {
-        return;
-      }
-
-      const movement: Record<string, [number, number]> = {
-        w: [0, -1],
-        a: [-1, 0],
-        s: [0, 1],
-        d: [1, 0],
-      };
 
       const key = event.key.toLowerCase();
-      if (key in movement) {
-        event.preventDefault();
-        movePlayer(...movement[key]);
-        return;
-      }
-
-      if (event.code === "Space" || event.key === " ") {
-        event.preventDefault();
+      const movement = movementVectors[key];
+      if (movement || event.code === "Space" || event.key === " ") event.preventDefault();
+      if (movementLocked) return;
+      if (movement) {
+        if (!pressed.has(key)) movePlayer(...movement, MOVEMENT_STEP, false);
+        pressed.add(key);
+      } else if ((event.code === "Space" || event.key === " ") && !event.repeat) {
         interact();
       }
     };
 
-    window.addEventListener("keydown", handle);
-    return () => {
-      window.removeEventListener("keydown", handle);
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (pressed.delete(event.key.toLowerCase())) flushPosition();
     };
-  }, [dialog, state.screen, interact, movePlayer]);
+
+    const clearPressed = () => {
+      if (pressed.size > 0) flushPosition();
+      pressed.clear();
+    };
+
+    const tick = (now: number) => {
+      if (now - lastTick >= MOVEMENT_TICK_MS) {
+        const dx = Number(pressed.has("d")) - Number(pressed.has("a"));
+        const dy = Number(pressed.has("s")) - Number(pressed.has("w"));
+        if (dx !== 0 || dy !== 0) {
+          const elapsed = Math.min((now - lastTick) / 1000, 0.05);
+          movePlayer(dx, dy, MOVEMENT_SPEED * elapsed, false);
+        }
+        lastTick = now;
+      }
+      frame = window.requestAnimationFrame(tick);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", clearPressed);
+    frame = window.requestAnimationFrame(tick);
+    return () => {
+      clearPressed();
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", clearPressed);
+    };
+  }, [interact, movementLocked, movePlayer, state.screen]);
+
+  useEffect(() => () => {
+    if (movementTimer.current != null) window.clearTimeout(movementTimer.current);
+  }, []);
 
   const nextStoryStep = useCallback(() => {
     if (!isTypingDone) return;
@@ -474,6 +556,59 @@ export default function VanlangGameShell({ initialScreen }: { initialScreen?: Ga
 
     persist((prev) => ({ ...prev, storyIndex: prev.storyIndex - 1 }));
   }, [persist, state.storyIndex]);
+
+  if (isVanLangLoading) {
+    return <VanlangCinematicLoader onReady={completeVanLangLoading} />;
+  }
+
+  if (state.screen === "map") {
+    return (
+      <VanlangWorldMap
+        revealed={mapRevealed}
+        onReveal={() => setMapRevealed(true)}
+        onEnterVanLang={enterVanLang}
+        onBack={onBackToMenu}
+      />
+    );
+  }
+
+  if (state.screen === "dungeon") {
+    if (mapLoadError) return <main id="noi-dung-chinh" className="game-root"><section className="panel"><h1>Không thể mở map</h1><p role="alert">{mapLoadError}</p><button onClick={moveToMap}>Quay lại Bản đồ Ký Ức</button></section></main>;
+    if (!mapDocument) return <main id="noi-dung-chinh" className="game-root"><p role="status">Đang tải dữ liệu map…</p></main>;
+    return (
+      <VanlangDungeonScreen
+        mapDocument={mapDocument}
+        mapFallbackActive={mapFallbackActive}
+        mapName={activeMap.name}
+        playerPos={state.playerPos}
+        facing={playerFacing}
+        isMoving={isPlayerMoving}
+        character={selectedCharacter}
+        nearbyNpc={nearbyNpcForPrompt ?? null}
+        rebirthRequired={!rebirthComplete}
+        rebirthText={npcTimekeeper?.dialogue ?? ""}
+        dialog={dialog}
+        drawer={dungeonDrawer}
+        unlockedCodexIds={state.unlockedCodexIds}
+        completedQuests={state.completedQuests}
+        totalSouls={state.totalSouls}
+        battlePassXp={state.battlePassXp}
+        selectedAnswer={selectedAnswer}
+        answerResult={answerResult}
+        bossRequirementsMet={bossRequirementsMet}
+        onMove={movePlayer}
+        onInteract={interact}
+        onCompleteRebirth={completeRebirth}
+        onCloseDialog={() => setDialog(null)}
+        onOpenDrawer={setDungeonDrawer}
+        onReset={clearBoard}
+        onExit={moveToMap}
+        onCollectGuideCodex={collectGuideCodex}
+        onAnswerBoss={answerBoss}
+      />
+    );
+  }
+
   return (
     <main id="noi-dung-chinh" className="game-root">
       <header className="topbar">
@@ -510,7 +645,7 @@ export default function VanlangGameShell({ initialScreen }: { initialScreen?: Ga
         </div>
       </header>
 
-      <section className={`layout ${state.screen === "dungeon" ? "dungeon-layout" : ""}`}>
+      <section className="layout">
         <aside className="left-panel">
           <div className="scene-box">
             <h3>Nhân vật</h3>
@@ -613,71 +748,6 @@ export default function VanlangGameShell({ initialScreen }: { initialScreen?: Ga
             </section>
           )}
 
-          {state.screen === "map" && (
-            <section className="content-card">
-              <h1>Bản đồ phó bản</h1>
-
-              {!state.mapGuideSeen ? (
-                <article className="npc-banner">
-                  <h2>{npcTimekeeper?.name ?? "Huyền quan giữ cổng"}</h2>
-                  <p>{npcTimekeeper?.dialogue}</p>
-                  <button type="button" className="primary-btn" onClick={openTimekeeperGuide}>
-                    Tôi đã nhận hướng dẫn, vào map
-                  </button>
-                </article>
-              ) : (
-                <>
-                  <p className="small">Chỉ phó bản Văn Lang mở sẵn trong MVP. Nhấn vào để vào thử thách.</p>
-                  <div className="map-grid">
-                    {mapDungeons.map((dungeon) => (
-                      <button
-                        key={dungeon.id}
-                        type="button"
-                        className={`dungeon-card ${dungeon.isUnlocked ? "open" : ""}`}
-                        disabled={!dungeon.isUnlocked}
-                        onMouseEnter={() => playTone(dungeon.isUnlocked ? 720 : 220, 24)}
-                        onClick={() => openMapChallenge(dungeon.id, dungeon.isUnlocked)}
-                      >
-                        <strong>{dungeon.name}</strong>
-                        <p>{dungeon.description}</p>
-                        <p className="small">Độ khó: {dungeon.difficulty}</p>
-                        <p className="small">Trạng thái: {dungeon.isUnlocked ? "Mở" : "Khóa"}</p>
-                        <p className="small">Chi tiết: {dungeon.lore}</p>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </section>
-          )}
-
-          {state.screen === "dungeon" && (
-            <section className="content-card dungeon-content">
-              <VanlangDungeonWorld
-                playerPos={state.playerPos}
-                selectedCharacterId={state.selectedCharacterId}
-                motionKey={playerMotion}
-              />
-              <div className="dungeon-copy">
-                <p className="kicker">Văn Lang · Mảnh ký ức đầu tiên</p>
-                <h1>Phó bản: {activeMap?.name}</h1>
-                <p>{mapTip}</p>
-              </div>
-              <div className="dungeon-status" aria-live="polite">
-                <span>Bí kíp {state.unlockedCodexIds.length}/{codexEntries.length}</span>
-                <span>Linh hồn {state.totalSouls}</span>
-                <span>Nhiệm vụ {state.completedQuests.length}/{dungeonQuests.length}</span>
-              </div>
-              <div className="dungeon-actions">
-                <button type="button" className="ghost-btn" onClick={clearBoard}>
-                  Trở lại cổng
-                </button>
-                <button type="button" className="primary-btn" onClick={moveToMap}>
-                  Rời phó bản
-                </button>
-              </div>
-            </section>
-          )}
         </section>
 
         <aside className="right-panel">
@@ -784,32 +854,6 @@ export default function VanlangGameShell({ initialScreen }: { initialScreen?: Ga
         </aside>
       </section>
 
-      {dialog?.kind === "map" ? (
-        <div className="overlay">
-          <article className="modal">
-            <h2>Thử thách phó bản</h2>
-            <p>Mở khóa đầu tiên là phó bản: {activeMap?.name ?? "Văn Lang"}.</p>
-            <p>Bạn có muốn vào thử thách này không?</p>
-            <div className="modal-actions">
-              <button
-                className="ghost-btn"
-                type="button"
-                onClick={() => setDialog(null)}
-              >
-                Hủy
-              </button>
-              <button
-                className="primary-btn"
-                type="button"
-                onClick={beginChallenge}
-              >
-                Chấp nhận thử thách
-              </button>
-            </div>
-          </article>
-        </div>
-      ) : null}
-
       {dialog?.kind === "timekeeper" ? (
         <div className="overlay">
           <article className="modal">
@@ -902,11 +946,5 @@ export default function VanlangGameShell({ initialScreen }: { initialScreen?: Ga
     </main>
   );
 }
-
-
-
-
-
-
 
 

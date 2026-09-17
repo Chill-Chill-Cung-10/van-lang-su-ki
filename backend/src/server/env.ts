@@ -5,6 +5,7 @@ const envSchema = z.object({
   HOST: z.string().default("0.0.0.0"),
   PORT: z.coerce.number().int().min(1).max(65_535).default(4000),
   FRONTEND_URL: z.string().url().default("http://localhost:3000"),
+  MAP_EDITOR_WRITE_ENABLED: z.string().default("false").transform((value) => value === "true"),
   DATABASE_URL: z.string().url(),
   DEMO_PLAYER_ID: z.string().uuid().default("00000000-0000-4000-8000-000000000001"),
   OPENAI_API_KEY: z.string().optional(),
@@ -16,6 +17,10 @@ const envSchema = z.object({
   S3_SECRET_ACCESS_KEY: z.string().default("change-me-local-only"),
   SMTP_HOST: z.string().default("localhost"),
   SMTP_PORT: z.coerce.number().int().min(1).max(65_535).default(1025),
+}).superRefine((env, context) => {
+  if (env.NODE_ENV === "production" && env.MAP_EDITOR_WRITE_ENABLED) {
+    context.addIssue({ code: "custom", path: ["MAP_EDITOR_WRITE_ENABLED"], message: "Map editor write không được bật trong production." });
+  }
 });
 
 let cachedEnv: z.infer<typeof envSchema> | undefined;

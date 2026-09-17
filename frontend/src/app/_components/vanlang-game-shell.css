@@ -598,6 +598,78 @@
   gap: 8px;
 }
 
+.dungeon-exit-btn {
+  position: relative;
+  min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  overflow: hidden;
+  border: 1px solid rgba(229, 190, 105, 0.72);
+  color: #f8e7bb;
+  background: linear-gradient(115deg, rgba(28, 20, 12, 0.96), rgba(81, 53, 25, 0.94));
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.38), inset 0 0 0 1px rgba(255, 236, 185, 0.06);
+  padding: 8px 16px 8px 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 180ms ease, color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+}
+
+.dungeon-exit-btn::after {
+  content: "";
+  position: absolute;
+  right: 8px;
+  bottom: 5px;
+  left: 8px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(229, 190, 105, 0.5), transparent);
+}
+
+.dungeon-exit-btn svg {
+  width: 23px;
+  height: 23px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: #e5be69;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dungeon-exit-btn span {
+  display: grid;
+  gap: 1px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.dungeon-exit-btn small {
+  color: #c9aa70;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.dungeon-exit-btn:hover {
+  border-color: #ffe09a;
+  color: #fff7e5;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45), 0 0 18px rgba(229, 190, 105, 0.16);
+  transform: translateY(-2px);
+}
+
+.dungeon-exit-btn:focus-visible {
+  outline: 3px solid #ffffff;
+  outline-offset: 2px;
+}
+
+.dungeon-exit-btn:active {
+  transform: translateY(0);
+}
+
 @media (max-width: 1150px) {
   .dungeon-layout .right-panel {
     position: absolute;
@@ -653,7 +725,8 @@
   }
 
   .dungeon-actions .ghost-btn,
-  .dungeon-actions .primary-btn {
+  .dungeon-actions .primary-btn,
+  .dungeon-actions .dungeon-exit-btn {
     min-height: 36px;
     padding: 6px 8px;
   }
