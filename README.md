@@ -1,4 +1,4 @@
-# Dấu Ấn Đại Việt AI123
+# Dấu Ấn Đại Việt AI
 
 [![CI](https://github.com/nWind9218/van-lang-su-ki/actions/workflows/ci.yml/badge.svg)](https://github.com/nWind9218/van-lang-su-ki/actions/workflows/ci.yml)
 
