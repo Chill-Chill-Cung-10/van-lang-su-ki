@@ -55,6 +55,7 @@ Tài liệu này ghi nhận các thay đổi đáng chú ý theo từng phiên b
 
 ### Fixed
 
+- Build package map contract trước khi chạy test backend và đưa toàn bộ unit test vào CI, tránh lỗi thiếu `dist/index.js` trên checkout sạch.
 - Loại bỏ lối vào viewport 2D dùng phép chiếu hard-code lệch với runtime; chuyển chỉnh/tạo walkable polygon, entrypoint, portal và NPC sang cùng world-space, camera và root transform của mode 3D/Overlay.
 - Tự sửa portal trigger ngoài navmesh khi lưu, hiển thị marker spawn trong viewport 2D và overlay 3D, đồng thời bổ sung kiểm thử browser cho spawn và dịch chuyển portal tới entry point.
 - Tự động đưa entry point nằm sát mép hoặc ngoài navmesh về vị trí hợp lệ gần nhất khi lưu map, đồng thời cập nhật lại tọa độ đã lưu trên giao diện.

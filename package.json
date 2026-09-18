@@ -16,6 +16,7 @@
     "start": "pnpm -r --parallel --stream start",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
     "check": "pnpm lint && pnpm typecheck && pnpm build",
     "test:e2e": "playwright test",
     "services:up": "docker compose up -d db minio minio-init mailpit adminer",
