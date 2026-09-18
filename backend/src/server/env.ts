@@ -6,8 +6,10 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65_535).default(4000),
   FRONTEND_URL: z.string().url().default("http://localhost:3000"),
   MAP_EDITOR_WRITE_ENABLED: z.string().default("false").transform((value) => value === "true"),
+  ASSET_STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
   ASSET_STORAGE_DIR: z.string().default(".runtime/assets"),
   ASSET_UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(67_108_864),
+  ASSET_PUBLIC_BASE_URL: z.string().url().optional(),
   DATABASE_URL: z.string().url(),
   DEMO_PLAYER_ID: z.string().uuid().default("00000000-0000-4000-8000-000000000001"),
   OPENAI_API_KEY: z.string().optional(),
@@ -22,6 +24,9 @@ const envSchema = z.object({
 }).superRefine((env, context) => {
   if (env.NODE_ENV === "production" && env.MAP_EDITOR_WRITE_ENABLED) {
     context.addIssue({ code: "custom", path: ["MAP_EDITOR_WRITE_ENABLED"], message: "Map editor write không được bật trong production." });
+  }
+  if (env.ASSET_STORAGE_DRIVER === "s3" && !env.ASSET_PUBLIC_BASE_URL) {
+    context.addIssue({ code: "custom", path: ["ASSET_PUBLIC_BASE_URL"], message: "S3 storage cần public asset base URL." });
   }
 });
 

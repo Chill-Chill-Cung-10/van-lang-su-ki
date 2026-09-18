@@ -9,17 +9,20 @@ import { pipeline } from "node:stream/promises";
 import type { FastifyPluginAsync } from "fastify";
 import { getServerEnv } from "../server/env.js";
 import { optimizeGlb, publishGlb, validateGlb, type OptimizeRunner } from "../server/assets/glb-pipeline.js";
+import { publishGlbToS3 } from "../server/storage.js";
 
-type Options = { storageDir?: string; maxBytes?: number; writeEnabled?: boolean; frontendUrl?: string; runner?: OptimizeRunner };
+type Options = { storageDir?: string; storageDriver?: "local" | "s3"; publicBaseUrl?: string; maxBytes?: number; writeEnabled?: boolean; frontendUrl?: string; runner?: OptimizeRunner };
 const checksumPattern = /^[a-f0-9]{64}$/;
 
 export const assetsRoutes: FastifyPluginAsync<Options> = async (app, options) => {
   const env = options.storageDir === undefined || options.maxBytes === undefined || options.writeEnabled === undefined || options.frontendUrl === undefined ? getServerEnv() : null;
   const storageDir = resolve(options.storageDir ?? env!.ASSET_STORAGE_DIR);
+  const storageDriver = options.storageDriver ?? env?.ASSET_STORAGE_DRIVER ?? "local";
+  const publicBaseUrl = options.publicBaseUrl ?? env?.ASSET_PUBLIC_BASE_URL;
   const maxBytes = options.maxBytes ?? env!.ASSET_UPLOAD_MAX_BYTES;
   const writeEnabled = options.writeEnabled ?? env!.MAP_EDITOR_WRITE_ENABLED;
   const frontendUrl = options.frontendUrl ?? env!.FRONTEND_URL;
-  await mkdir(`${storageDir}/glb`, { recursive: true });
+  if (storageDriver === "local") await mkdir(`${storageDir}/glb`, { recursive: true });
   await app.register(multipart, { limits: { files: 1, fileSize: maxBytes, fields: 0 } });
 
   app.post("/api/admin/assets/glb", async (request, reply) => {
@@ -40,7 +43,9 @@ export const assetsRoutes: FastifyPluginAsync<Options> = async (app, options) =>
       const checksum = hash.digest("hex");
       const summary = await optimizeGlb(input, output, options.runner);
       const runtimeBytes = (await stat(output)).size;
-      const published = await publishGlb(output, storageDir, checksum);
+      const published = storageDriver === "s3"
+        ? await publishGlbToS3(output, checksum)
+        : await publishGlb(output, storageDir, checksum);
       return reply.status(published.reused ? 200 : 201).send({
         assetId: checksum, checksum, src: `/runtime-assets/glb/${checksum}.glb`, originalBytes, runtimeBytes, reused: published.reused, summary,
       });
@@ -58,6 +63,7 @@ export const assetsRoutes: FastifyPluginAsync<Options> = async (app, options) =>
   app.get("/api/assets/glb/:checksum.glb", async (request, reply) => {
     const checksum = (request.params as { checksum?: string }).checksum ?? "";
     if (!checksumPattern.test(checksum)) return reply.status(400).send({ code: "INVALID_ASSET_ID" });
+    if (storageDriver === "s3") return reply.redirect(`${publicBaseUrl}/glb/${checksum}.glb`);
     const path = `${storageDir}/glb/${checksum}.glb`;
     try {
       await stat(path);

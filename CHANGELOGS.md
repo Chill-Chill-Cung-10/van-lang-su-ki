@@ -6,6 +6,7 @@ Tài liệu này ghi nhận các thay đổi đáng chú ý theo từng phiên b
 
 ### Added
 
+- Thêm adapter publish GLB lên object storage S3-compatible và redirect đọc asset qua public storage URL, trong khi local/test tiếp tục dùng filesystem.
 - Thêm cấu hình deploy chi phí thấp cho Vercel/Render, migration schema nền dùng được với Supabase và tài liệu cấu hình domain, secret cùng giới hạn upload production.
 - Thêm ngân hàng 340 câu hỏi trắc nghiệm Chặng 1 (Kinh Dương Vương): migration tạo bảng `stages` (13 ải) và `questions` (340 câu, 4 mức độ Bloom, 4 nhóm nguồn), Drizzle schema, dữ liệu JSON chuẩn hóa từ Excel, seed script idempotent và hai API endpoint (`GET /api/questions/stage/:code` rút câu ngẫu nhiên theo cơ cấu mức độ, `POST /api/questions/answer` ghi nhận kết quả vào `learning_attempts` và trả phản hồi chi tiết).
 - Cho phép giữ và kéo trực tiếp mọi entrypoint và NPC trên viewport 2D, đồng bộ lựa chọn, tọa độ và trạng thái chưa lưu với inspector hiện có.

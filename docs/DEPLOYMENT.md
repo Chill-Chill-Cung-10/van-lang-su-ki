@@ -5,7 +5,7 @@ Kiến trúc mục tiêu:
 - Vercel Hobby chạy `frontend/`.
 - Render Free chạy Fastify backend từ `render.yaml`.
 - Supabase Free cung cấp PostgreSQL.
-- Cloudflare quản lý DNS; R2 sẽ lưu asset upload ở phase tiếp theo.
+- Cloudflare quản lý DNS. Backend hỗ trợ storage S3-compatible; có thể dùng Supabase Storage S3 hoặc Cloudflare R2.
 
 ## 1. Supabase
 
@@ -48,16 +48,30 @@ Render Free ngủ sau thời gian không có request. Request đầu tiên sau k
 
 Thêm đúng record mà Vercel và Render hiển thị trong màn hình custom domain. Không tự đoán IP. Dùng Cloudflare Free và giữ SSL/TLS ở chế độ `Full (strict)` sau khi hai origin đã cấp chứng chỉ.
 
-## 5. Giới hạn upload hiện tại
+## 5. Storage S3-compatible
 
-GLB mẫu đang được bundle trong frontend nên đọc được trên production. API import GLB hiện tối ưu rồi ghi ra filesystem local; vì filesystem Render Free là tạm thời, production bắt buộc giữ:
+Khai báo trên Render:
+
+```text
+ASSET_STORAGE_DRIVER=s3
+ASSET_PUBLIC_BASE_URL=https://<project>.supabase.co/storage/v1/object/public/<bucket>
+S3_ENDPOINT=https://<project>.storage.supabase.co/storage/v1/s3
+S3_REGION=<region>
+S3_BUCKET=<bucket>
+S3_ACCESS_KEY_ID=<access-key>
+S3_SECRET_ACCESS_KEY=<secret-key>
+```
+
+Bucket phải public để URL asset hoạt động. Không commit credential S3. GLB mẫu đang bundle trong frontend vẫn đọc được độc lập với bucket.
+
+Editor production tiếp tục bị khóa cho tới khi có authentication/authorization:
 
 ```text
 MAP_EDITOR_WRITE_ENABLED=false
 NEXT_PUBLIC_MAP_EDITOR_WRITE_ENABLED=false
 ```
 
-Chỉ bật editor/upload sau khi adapter publish/read đã chuyển sang Cloudflare R2 và route admin có authentication.
+Chỉ bật editor/upload sau khi route admin có authentication. Local development tiếp tục dùng `ASSET_STORAGE_DRIVER=local`.
 
 ## 6. Kiểm tra sau deploy
 
