@@ -1,7 +1,7 @@
 "use client";
 
 import { colliderFootprint, type MapDocument, type MapNpc, type MapObject, type Vec2 } from "@van-lang/map-contract";
-import { ContactShadows, Html, TransformControls, useAnimations, useGLTF } from "@react-three/drei";
+import { ContactShadows, Html, Line, TransformControls, useAnimations, useGLTF } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Component, Suspense, useEffect, useMemo, useRef } from "react";
 import type { PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "react";
@@ -15,11 +15,17 @@ type EditorOverlayConfig = {
   selectedPortalId?: string | null;
   showAllPolygons?: boolean;
   editablePolygons?: boolean;
+  editableNavigation?: boolean;
+  drawing?: boolean;
+  draft?: Vec2[];
   onPolygonSelect?: (polygonId: string) => void;
   onEntryPointSelect?: (entryPointId: string) => void;
   onPortalSelect?: (portalId: string) => void;
   onPointMove?: (polygonId: string, index: number, point: Vec2) => void;
   onPointInsert?: (polygonId: string, index: number, point: Vec2) => void;
+  onDraftPoint?: (point: Vec2) => void;
+  onEntryPointMove?: (entryPointId: string, point: Vec2) => void;
+  onPortalMove?: (portalId: string, point: Vec2) => void;
 };
 type DungeonWorldProps = { mapDocument: MapDocument; playerPos: { x: number; y: number }; facing: number; isMoving: boolean; onSceneReady?: () => void; onSceneError?: () => void; editorOverlay?: EditorOverlayConfig; selectedNpcId?: string | null; onNpcSelect?: (npcId: string) => void; onNpcMove?: (npcId: string, position: { x: number; y: number; z: number }) => void };
 const HERO_MODEL = "/models/vanlang-rebirth/hero.runtime.glb";
@@ -118,7 +124,33 @@ function OverlayPolygon({ points, color, groundY, onSelect }: { points: Vec2[]; 
     result.closePath();
     return result;
   }, [points]);
-  return <mesh position={[0, groundY + 0.035, 0]} rotation={[Math.PI / 2, 0, 0]} renderOrder={1000} onClick={(event) => { event.stopPropagation(); onSelect?.(); }}><shapeGeometry args={[shape]} /><meshBasicMaterial color={color} transparent opacity={0.42} side={DoubleSide} depthWrite={false} polygonOffset polygonOffsetFactor={-2} /></mesh>;
+  return <mesh position={[0, groundY + 0.035, 0]} rotation={[Math.PI / 2, 0, 0]} renderOrder={1000} onClick={onSelect ? (event) => { event.stopPropagation(); onSelect(); } : undefined}><shapeGeometry args={[shape]} /><meshBasicMaterial color={color} transparent opacity={0.42} side={DoubleSide} depthWrite={false} polygonOffset polygonOffsetFactor={-2} /></mesh>;
+}
+
+function OverlayDraft({ points, groundY }: { points: Vec2[]; groundY: number }) {
+  return <group name="map-editor-draft">
+    {points.length > 1 ? <Line points={points.map((point) => [point.x, groundY + 0.09, point.z])} color="#58e6ff" lineWidth={3} renderOrder={1006} depthTest={false} /> : null}
+    {points.map((point, index) => <mesh key={index} position={[point.x, groundY + 0.095, point.z]} rotation={[Math.PI / 2, 0, 0]} renderOrder={1007}><circleGeometry args={[0.09, 24]} /><meshBasicMaterial color="#58e6ff" depthTest={false} depthWrite={false} /></mesh>)}
+  </group>;
+}
+
+function OverlayDraftSurface({ groundY, rootRef, onPoint }: { groundY: number; rootRef: RefObject<Group | null>; onPoint: (point: Vec2) => void }) {
+  return <mesh
+    name="map-editor-draft-surface"
+    position={[0, groundY + 0.02, 0]}
+    rotation={[-Math.PI / 2, 0, 0]}
+    renderOrder={999}
+    onClick={(event) => {
+      event.stopPropagation();
+      const root = rootRef.current;
+      if (!root) return;
+      const local = root.worldToLocal(event.point.clone());
+      onPoint({ x: local.x, z: local.z });
+    }}
+  >
+    <planeGeometry args={[20_000, 20_000]} />
+    <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+  </mesh>;
 }
 
 function OverlayPointHandle({ point, groundY, rootRef, label, midpoint = false, onSelect, onMove, onInsert }: {
@@ -154,7 +186,7 @@ function OverlayPointHandle({ point, groundY, rootRef, label, midpoint = false, 
     const local = root.worldToLocal(worldHit.clone());
     return { x: local.x, z: local.z };
   };
-  return <Html center position={[point.x, groundY + 0.12, point.z]} zIndexRange={[30, 20]}>
+  return <Html center position={[point.x, groundY + 0.12, point.z]} zIndexRange={[60, 51]}>
     <button
       type="button"
       className={`overlay-point-handle${midpoint ? " is-midpoint" : ""}`}
@@ -170,32 +202,41 @@ function OverlayPointHandle({ point, groundY, rootRef, label, midpoint = false, 
 function EditorOverlay({ document, config, rootRef }: { document: MapDocument; config: EditorOverlayConfig; rootRef: RefObject<Group | null> }) {
   const footprints = document.objects.map((object) => ({ id: object.id, footprint: colliderFootprint(object) })).filter((item) => item.footprint);
   const spawn = document.navigation.spawn;
+  const editableNavigation = config.editableNavigation && !config.drawing;
   const polygons = config.showAllPolygons
     ? document.navigation.walkablePolygons.filter((polygon) => polygon.enabled)
     : document.navigation.walkablePolygons.filter((polygon) => polygon.enabled && polygon.id === config.selectedPolygonId);
   return <group name="map-editor-overlay">
+    {config.drawing && config.onDraftPoint ? <OverlayDraftSurface groundY={document.world.groundY} rootRef={rootRef} onPoint={config.onDraftPoint} /> : null}
+    {config.draft?.length ? <OverlayDraft points={config.draft} groundY={document.world.groundY} /> : null}
     <Html center position={[spawn.x, document.world.groundY + 0.22, spawn.z]} zIndexRange={[40, 31]}><div className="overlay-spawn-marker" role="img" aria-label="Spawn point">Spawn</div></Html>
     <mesh name="spawn-point-marker" position={[spawn.x, document.world.groundY + 0.065, spawn.z]} rotation={[Math.PI / 2, 0, 0]} renderOrder={1002}><ringGeometry args={[0.16, 0.25, 32]} /><meshBasicMaterial color="#58e6ff" transparent opacity={0.95} side={DoubleSide} depthWrite={false} /></mesh>
     {document.navigation.entryPoints.map((entryPoint) => {
       const selected = entryPoint.id === config.selectedEntryPointId;
-      return <group key={entryPoint.id} position={[entryPoint.position.x, document.world.groundY + 0.075, entryPoint.position.z]} rotation={[0, entryPoint.facingDeg * Math.PI / 180, 0]} onClick={(event) => { event.stopPropagation(); config.onEntryPointSelect?.(entryPoint.id); }}>
-        <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={1003}><ringGeometry args={[0.18, selected ? 0.34 : 0.29, 32]} /><meshBasicMaterial color={selected ? "#fff2a8" : "#58e6ff"} transparent opacity={0.98} side={DoubleSide} depthWrite={false} /></mesh>
-        <mesh position={[0, 0, 0.34]} rotation={[Math.PI / 2, 0, 0]} renderOrder={1003}><coneGeometry args={[0.12, 0.28, 3]} /><meshBasicMaterial color={selected ? "#fff2a8" : "#58e6ff"} transparent opacity={0.98} depthWrite={false} /></mesh>
-        <Html center position={[0, 0.28, 0]} zIndexRange={[40, 31]}><button type="button" className="overlay-navigation-label" aria-label={`Entrypoint ${entryPoint.id}`}>{entryPoint.id}</button></Html>
+      return <group key={entryPoint.id}>
+        <group position={[entryPoint.position.x, document.world.groundY + 0.075, entryPoint.position.z]} rotation={[0, entryPoint.facingDeg * Math.PI / 180, 0]} onClick={!config.drawing ? (event) => { event.stopPropagation(); config.onEntryPointSelect?.(entryPoint.id); } : undefined}>
+          <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={1003}><ringGeometry args={[0.18, selected ? 0.34 : 0.29, 32]} /><meshBasicMaterial color={selected ? "#fff2a8" : "#58e6ff"} transparent opacity={0.98} side={DoubleSide} depthWrite={false} /></mesh>
+          <mesh position={[0, 0, 0.34]} rotation={[Math.PI / 2, 0, 0]} renderOrder={1003}><coneGeometry args={[0.12, 0.28, 3]} /><meshBasicMaterial color={selected ? "#fff2a8" : "#58e6ff"} transparent opacity={0.98} depthWrite={false} /></mesh>
+          <Html center position={[0, 0.28, 0]} zIndexRange={[40, 31]}><button type="button" className="overlay-navigation-label" aria-label={`Entrypoint ${entryPoint.id}`}>{entryPoint.id}</button></Html>
+        </group>
+        {editableNavigation ? <OverlayPointHandle point={entryPoint.position} groundY={document.world.groundY} rootRef={rootRef} label={`Di chuyển entrypoint ${entryPoint.id}`} onSelect={() => config.onEntryPointSelect?.(entryPoint.id)} onMove={(point) => config.onEntryPointMove?.(entryPoint.id, point)} /> : null}
       </group>;
     })}
     {document.portals.filter((portal) => portal.enabled).map((portal) => {
       const selected = portal.id === config.selectedPortalId;
-      return <group key={portal.id} position={[portal.trigger.center.x, document.world.groundY + 0.06, portal.trigger.center.z]} onClick={(event) => { event.stopPropagation(); config.onPortalSelect?.(portal.id); }}>
-        <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={1003}><circleGeometry args={[portal.trigger.radius, 48]} /><meshBasicMaterial color="#ad58ff" transparent opacity={selected ? 0.48 : 0.28} side={DoubleSide} depthWrite={false} /></mesh>
-        <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={1004}><ringGeometry args={[Math.max(0.04, portal.trigger.radius - 0.06), portal.trigger.radius, 48]} /><meshBasicMaterial color={selected ? "#fff2a8" : "#d9a7ff"} transparent opacity={0.98} side={DoubleSide} depthWrite={false} /></mesh>
-        <Html center position={[0, 0.28, 0]} zIndexRange={[40, 31]}><button type="button" className="overlay-navigation-label is-portal" aria-label={`Portal ${portal.id}`}>{portal.id}</button></Html>
+      return <group key={portal.id}>
+        <group position={[portal.trigger.center.x, document.world.groundY + 0.06, portal.trigger.center.z]} onClick={!config.drawing ? (event) => { event.stopPropagation(); config.onPortalSelect?.(portal.id); } : undefined}>
+          <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={1003}><circleGeometry args={[portal.trigger.radius, 48]} /><meshBasicMaterial color="#ad58ff" transparent opacity={selected ? 0.48 : 0.28} side={DoubleSide} depthWrite={false} /></mesh>
+          <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={1004}><ringGeometry args={[Math.max(0.04, portal.trigger.radius - 0.06), portal.trigger.radius, 48]} /><meshBasicMaterial color={selected ? "#fff2a8" : "#d9a7ff"} transparent opacity={0.98} side={DoubleSide} depthWrite={false} /></mesh>
+          <Html center position={[0, 0.28, 0]} zIndexRange={[40, 31]}><button type="button" className="overlay-navigation-label is-portal" aria-label={`Portal ${portal.id}`}>{portal.id}</button></Html>
+        </group>
+        {editableNavigation ? <OverlayPointHandle point={portal.trigger.center} groundY={document.world.groundY} rootRef={rootRef} label={`Di chuyển portal ${portal.id}`} onSelect={() => config.onPortalSelect?.(portal.id)} onMove={(point) => config.onPortalMove?.(portal.id, point)} /> : null}
       </group>;
     })}
     {polygons.map((polygon) => <group key={polygon.id}>
-      <OverlayPolygon points={polygon.points} color={polygon.id === config.selectedPolygonId ? "#ffc55b" : "#48e692"} groundY={document.world.groundY} onSelect={() => config.onPolygonSelect?.(polygon.id)} />
-      {config.editablePolygons ? polygon.points.map((point, index) => <OverlayPointHandle key={index} point={point} groundY={document.world.groundY} rootRef={rootRef} label={`Di chuyển điểm ${index + 1} của ${polygon.id}`} onSelect={() => config.onPolygonSelect?.(polygon.id)} onMove={(next) => config.onPointMove?.(polygon.id, index, next)} />) : null}
-      {config.editablePolygons && polygon.id === config.selectedPolygonId ? polygon.points.map((point, index) => {
+      <OverlayPolygon points={polygon.points} color={polygon.id === config.selectedPolygonId ? "#ffc55b" : "#48e692"} groundY={document.world.groundY} onSelect={config.drawing ? undefined : () => config.onPolygonSelect?.(polygon.id)} />
+      {config.editablePolygons && !config.drawing ? polygon.points.map((point, index) => <OverlayPointHandle key={index} point={point} groundY={document.world.groundY} rootRef={rootRef} label={`Di chuyển điểm ${index + 1} của ${polygon.id}`} onSelect={() => config.onPolygonSelect?.(polygon.id)} onMove={(next) => config.onPointMove?.(polygon.id, index, next)} />) : null}
+      {config.editablePolygons && !config.drawing && polygon.id === config.selectedPolygonId ? polygon.points.map((point, index) => {
         const next = polygon.points[(index + 1) % polygon.points.length];
         const midpoint = { x: (point.x + next.x) / 2, z: (point.z + next.z) / 2 };
         return <OverlayPointHandle key={`insert-${index}`} point={midpoint} groundY={document.world.groundY} rootRef={rootRef} label={`Chèn điểm sau điểm ${index + 1} của ${polygon.id}`} midpoint onSelect={() => config.onPolygonSelect?.(polygon.id)} onInsert={() => config.onPointInsert?.(polygon.id, index + 1, midpoint)} />;

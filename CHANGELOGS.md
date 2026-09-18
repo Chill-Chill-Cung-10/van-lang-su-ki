@@ -6,6 +6,8 @@ Tài liệu này ghi nhận các thay đổi đáng chú ý theo từng phiên b
 
 ### Added
 
+- Thêm ngân hàng 340 câu hỏi trắc nghiệm Chặng 1 (Kinh Dương Vương): migration tạo bảng `stages` (13 ải) và `questions` (340 câu, 4 mức độ Bloom, 4 nhóm nguồn), Drizzle schema, dữ liệu JSON chuẩn hóa từ Excel, seed script idempotent và hai API endpoint (`GET /api/questions/stage/:code` rút câu ngẫu nhiên theo cơ cấu mức độ, `POST /api/questions/answer` ghi nhận kết quả vào `learning_attempts` và trả phản hồi chi tiết).
+- Cho phép giữ và kéo trực tiếp mọi entrypoint và NPC trên viewport 2D, đồng bộ lựa chọn, tọa độ và trạng thái chưa lưu với inspector hiện có.
 - Đồng bộ vùng đang chọn giữa viewport 2D, góc nhìn 3D và Overlay; hiển thị entrypoint cùng portal point trực tiếp trong cả hai chế độ 3D.
 - Cho phép quản lý entrypoint ngay trong tab Map, đặt nhanh tọa độ/hướng từ scene object đang chọn và preview nhân vật tại đúng điểm mà portal Map Flow sẽ teleport tới.
 - Thêm vertical slice import NPC GLB: backend validate/tối ưu và lưu asset theo SHA-256, Map Document V3 tương thích V1/V2, editor đặt/chọn/dịch chuyển NPC, runtime render model thật và hội thoại bằng Space hoặc cảm ứng.
@@ -53,6 +55,7 @@ Tài liệu này ghi nhận các thay đổi đáng chú ý theo từng phiên b
 
 ### Fixed
 
+- Loại bỏ lối vào viewport 2D dùng phép chiếu hard-code lệch với runtime; chuyển chỉnh/tạo walkable polygon, entrypoint, portal và NPC sang cùng world-space, camera và root transform của mode 3D/Overlay.
 - Tự sửa portal trigger ngoài navmesh khi lưu, hiển thị marker spawn trong viewport 2D và overlay 3D, đồng thời bổ sung kiểm thử browser cho spawn và dịch chuyển portal tới entry point.
 - Tự động đưa entry point nằm sát mép hoặc ngoài navmesh về vị trí hợp lệ gần nhất khi lưu map, đồng thời cập nhật lại tọa độ đã lưu trên giao diện.
 - Sửa Save Flow khi map active đã có revision mới hơn revision mà flow đang pin; backend cấp revision kế tiếp từ revision lớn nhất nên không còn lỗi trùng khóa và rollback toàn bộ thao tác lưu.

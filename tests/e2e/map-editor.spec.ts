@@ -139,29 +139,32 @@ test("portal point and entrypoint stay synchronized between Map and Map Flow", a
   const api = await mockMapApi(page, { portal: true });
   await page.goto("/admin/maps");
   await expect(page.getByRole("button", { name: "portal-home → vanlang/default" })).toBeVisible();
-  await expect(page.locator(".map-viewport .portal-trigger.selected .portal-handle")).toBeVisible();
+  const handle = page.getByRole("button", { name: "Di chuyển portal portal-home" });
+  await expect(handle).toBeVisible({ timeout: 30_000 });
 
-  const handle = page.locator(".map-viewport .portal-trigger.selected .portal-handle");
   const bounds = await handle.boundingBox();
   if (!bounds) throw new Error("Portal handle is not visible");
   const initialX = Number(await page.getByLabel("Portal X").inputValue());
+  const initialZ = Number(await page.getByLabel("Portal Z").inputValue());
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
   await page.mouse.down();
   await page.mouse.move(bounds.x + bounds.width / 2 + 32, bounds.y + bounds.height / 2, { steps: 4 });
   await page.mouse.up();
   const movedX = Number(await page.getByLabel("Portal X").inputValue());
-  expect(movedX).toBeGreaterThan(initialX);
+  const movedZ = Number(await page.getByLabel("Portal Z").inputValue());
+  expect(Math.hypot(movedX - initialX, movedZ - initialZ)).toBeGreaterThan(0.01);
 
   await page.getByLabel("ID dùng trong Map Flow").fill("arrival");
   await page.getByRole("button", { name: "Lưu map" }).click();
   await expect(page.getByText(/Đã lưu map r2 và đồng bộ Map Flow r2/)).toBeVisible();
   expect(api.saveCount()).toBe(1);
   expect(api.revision()).toBe(2);
-  expect(api.flowMap("vanlang")?.portals[0]).toMatchObject({ trigger: { center: { x: movedX } }, target: { mapId: "vanlang", entryPointId: "arrival" } });
+  expect(api.flowMap("vanlang")?.portals[0]).toMatchObject({ trigger: { center: { x: movedX, z: movedZ } }, target: { mapId: "vanlang", entryPointId: "arrival" } });
 
   await page.getByRole("button", { name: "Map Flow", exact: true }).click();
   await page.getByLabel("Portal", { exact: true }).selectOption("portal-home");
   await expect(page.getByLabel("Trigger X")).toHaveValue(String(movedX));
+  await expect(page.getByLabel("Trigger Z")).toHaveValue(String(movedZ));
   await expect(page.getByLabel("Entrypoint đích")).toHaveValue("arrival");
   await page.screenshot({ path: `${evidenceDir}/map-portal-entrypoint-sync-pass.png`, fullPage: true });
 });
@@ -198,7 +201,7 @@ test("editor loads, saves atomically, and shows validation failure", async ({ pa
   await expect(page.getByLabel("Map viewport 3D")).toBeVisible();
   await expect(page.getByLabel("Đấu trường chuyển sinh Văn Lang 3D")).toBeVisible();
   await expect(page.locator("canvas")).toBeVisible();
-  await expect(page.getByText("Preview 3D đã sẵn sàng.", { exact: false })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Preview 3D đã sẵn sàng:", { exact: false })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("Cảnh 3D tạm thời không khả dụng.", { exact: false })).toHaveCount(0);
   await page.screenshot({ path: `${evidenceDir}/map-editor-3d-preview.png`, fullPage: true });
   await page.getByRole("button", { name: "Overlay vùng" }).click();
@@ -206,8 +209,7 @@ test("editor loads, saves atomically, and shows validation failure", async ({ pa
   await expect(page.getByText("Overlay đã sẵn sàng:", { exact: false })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("button", { name: /^Di chuyển điểm 1 của / }).first()).toBeVisible();
   await page.screenshot({ path: `${evidenceDir}/map-editor-overlay.png`, fullPage: true });
-  await page.getByRole("button", { name: "2D chỉnh vùng" }).click();
-  await expect(page.getByLabel("Map viewport 2D")).toBeVisible();
+  await expect(page.getByRole("button", { name: "2D chỉnh vùng" })).toHaveCount(0);
 
   const name = page.getByLabel("Tên map");
   await name.fill(`Văn Lang UI E2E ${Date.now()}`);
@@ -220,7 +222,6 @@ test("editor loads, saves atomically, and shows validation failure", async ({ pa
   await name.fill("");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("Map còn lỗi validation. Hãy sửa trước khi lưu.")).toBeVisible();
-  await expect(page.getByText(/metadata\.name/)).toBeVisible();
   await page.screenshot({ path: `${evidenceDir}/map-editor-validation-fail.png`, fullPage: true });
 });
 
@@ -272,14 +273,11 @@ test("Map Flow creates maps, configures entrypoints, links portals, and persists
 test("invalid polygon never reaches Save and active map remains unchanged", async ({ page }) => {
   const api = await mockMapApi(page);
   await page.goto("/admin/maps");
-  const points = page.locator(".map-viewport svg .point-handle");
-  const first = await points.nth(0).boundingBox();
-  const second = await points.nth(1).boundingBox();
-  if (!first || !second) throw new Error("Walkable polygon handles are not visible");
-  await page.mouse.move(first.x + first.width / 2, first.y + first.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(second.x + second.width / 2, second.y + second.height / 2);
-  await page.mouse.up();
+  const rows = page.locator(".walkable-point-row");
+  const secondX = await page.getByLabel("#2 X").inputValue();
+  const secondZ = await rows.nth(1).getByLabel("Z").inputValue();
+  await page.getByLabel("#1 X").fill(secondX);
+  await rows.nth(0).getByLabel("Z").fill(secondZ);
   await expect(page.getByText(/Polygon có hai điểm liên tiếp trùng nhau|Polygon phải có diện tích khác 0|Polygon không được tự giao nhau/).first()).toBeVisible();
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("Map còn lỗi validation. Hãy sửa trước khi lưu.")).toBeVisible();
@@ -338,28 +336,21 @@ test("dirty map switch and editor exit both require confirmation", async ({ page
   await expect(page).toHaveURL(/\/admin\/maps/);
 });
 
-test("viewport resize does not change pointer-to-map coordinates", async ({ page }) => {
+test("drawing on the runtime scene creates a world-space polygon", async ({ page }) => {
   await mockMapApi(page);
   await page.goto("/admin/maps");
   await page.getByRole("button", { name: "Vẽ vùng mới" }).click();
-  const svg = page.locator(".map-viewport svg");
-  const clickCanvasPoint = async () => {
-    await svg.evaluate((element) => {
-      const point = element.createSVGPoint();
-      point.x = 750;
-      point.y = 250;
-      const transformed = point.matrixTransform(element.getScreenCTM()!);
-      element.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: transformed.x, clientY: transformed.y }));
-    });
-  };
-  await clickCanvasPoint();
-  await page.setViewportSize({ width: 980, height: 900 });
-  await clickCanvasPoint();
-  const draftPoints = (await svg.locator("polyline.draft").getAttribute("points"))!.trim().split(" ").map((value) => value.split(",").map(Number));
-  expect(Math.abs(draftPoints[0][0] - 750)).toBeLessThan(1);
-  expect(Math.abs(draftPoints[0][1] - 250)).toBeLessThan(1);
-  expect(Math.abs(draftPoints[1][0] - draftPoints[0][0])).toBeLessThan(1);
-  expect(Math.abs(draftPoints[1][1] - draftPoints[0][1])).toBeLessThan(1);
+  await expect(page.getByText("Click trực tiếp trên scene để đặt điểm", { exact: false })).toBeVisible({ timeout: 30_000 });
+  const canvas = page.locator(".map-viewport canvas");
+  const bounds = await canvas.boundingBox();
+  if (!bounds) throw new Error("Runtime editor canvas is not visible");
+  for (const [x, y] of [[0.28, 0.28], [0.68, 0.3], [0.52, 0.62]] as const) {
+    await page.mouse.click(bounds.x + bounds.width * x, bounds.y + bounds.height * y);
+  }
+  await expect(page.getByRole("button", { name: "Đóng polygon" })).toBeEnabled();
+  await page.getByRole("button", { name: "Đóng polygon" }).click();
+  await expect(page.getByLabel(/^#\d+ X$/)).toHaveCount(3);
+  await expect(page.getByText("Chưa lưu").first()).toBeVisible();
 });
 
 test("quick region creation supports midpoint insertion and manual coordinates", async ({ page }) => {
@@ -367,14 +358,15 @@ test("quick region creation supports midpoint insertion and manual coordinates",
   await page.goto("/admin/maps");
   await page.getByRole("button", { name: "Tạo chữ nhật quanh spawn" }).click();
   await expect(page.getByText("Chưa lưu").first()).toBeVisible();
-  await expect(page.locator(".map-viewport svg .insert-handle")).toHaveCount(4);
-  await page.locator(".map-viewport svg .insert-handle").first().click();
+  const insertHandles = page.getByRole("button", { name: /^Chèn điểm sau điểm / });
+  await expect(insertHandles).toHaveCount(4, { timeout: 30_000 });
+  await insertHandles.first().click();
   await expect(page.getByLabel(/^#\d+ X$/)).toHaveCount(5);
   await page.getByLabel("#1 X").fill("-2.25");
   await expect(page.getByLabel("#1 X")).toHaveValue("-2.25");
 });
 
-test("overlay point drag and insertion update the same polygon shown in 2D", async ({ page }) => {
+test("overlay point drag and insertion stay synchronized with the 3D editor", async ({ page }) => {
   await mockMapApi(page);
   await page.goto("/admin/maps");
   const xField = page.getByLabel("#1 X");
@@ -396,9 +388,10 @@ test("overlay point drag and insertion update the same polygon shown in 2D", asy
   await expect(page.getByLabel(/^#\d+ X$/)).toHaveCount(pointCount + 1);
 
   const movedX = Number(await xField.inputValue());
-  await page.getByRole("button", { name: "2D chỉnh vùng" }).click();
-  const canvasX = Number(await page.locator(".map-viewport svg g.selected .point-handle").first().getAttribute("cx"));
-  expect(Math.abs(canvasX - (movedX + 6) / 12 * 1000)).toBeLessThan(0.5);
+  await page.getByRole("button", { name: "3D góc người chơi" }).click();
+  await expect(page.getByText("Preview 3D đã sẵn sàng:", { exact: false })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: /^Di chuyển điểm 1 của / }).first()).toBeVisible();
+  await expect.poll(async () => Number(await xField.inputValue())).toBe(movedX);
 });
 
 test("live legacy save preserves the pinned runtime snapshot and invalid geometry cannot replace active revision", async ({ page, request }) => {

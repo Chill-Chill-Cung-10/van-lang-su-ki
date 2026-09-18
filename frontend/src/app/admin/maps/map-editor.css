@@ -7,6 +7,7 @@
 .editor-tabs button.active { color: #1b140d; background: #f2c87d; font-weight: 800; }
 .header-save-controls { display: flex; align-items: center; gap: 8px; }
 .header-save-controls > span { min-width: 72px; font-size: 13px; text-align: right; }
+.header-save-controls > span.invalid { color: #ff9b8f; font-weight: 800; }
 .header-save-button { min-height: 44px; padding: 8px 16px; color: #1b140d; border: 1px solid #f2c87d; border-radius: 5px; background: #f2c87d; cursor: pointer; font-weight: 800; }
 .header-save-button:hover, .header-save-button:focus-visible { outline: 2px solid #fff4d8; outline-offset: 2px; }
 .header-save-button:disabled { color: #a69780; border-color: #685842; background: #352c23; cursor: default; opacity: .75; }
@@ -16,6 +17,17 @@
 .map-editor-shell aside { overflow: auto; max-height: calc(100vh - 112px); border-right: 1px solid #70583e; background: #1d1814; }
 .map-editor-shell details { border-bottom: 1px solid #4b3b2d; }
 .map-editor-shell summary { cursor: pointer; padding: 12px 14px; font-weight: 700; background: #2c231b; }
+.editor-validation-summary { display: grid; gap: 9px; padding: 12px; border-bottom: 1px solid #70583e; background: #17231b; }
+.editor-validation-summary.has-errors { background: #321b18; border-color: #b95f52; }
+.editor-validation-summary.has-warnings { background: #302618; border-color: #b88a45; }
+.editor-validation-summary > div { display: grid; gap: 3px; }
+.editor-validation-summary small { color: #d8c6a9; line-height: 1.4; }
+.editor-validation-summary ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.editor-validation-summary li button { width: 100%; min-height: 44px; display: grid; grid-template-columns: 92px 1fr; gap: 8px; align-items: center; padding: 8px 10px; color: #ffe9e3; border: 1px solid #98594f; border-radius: 4px; background: #211512; cursor: pointer; text-align: left; }
+.editor-validation-summary li button:hover, .editor-validation-summary li button:focus-visible { border-color: #ffb1a6; outline: 2px solid #fff4d8; outline-offset: 2px; }
+.editor-validation-summary li button span { color: #ffc477; font-size: 12px; font-weight: 800; }
+.editor-validation-summary p { margin: 0; color: #ffb1a6; line-height: 1.4; }
+.editor-inline-issues { margin: 0; padding: 9px 10px 9px 28px; color: #ffb1a6; border: 1px solid #98594f; border-radius: 4px; background: #2b1714; font-size: 13px; line-height: 1.45; }
 .editor-section { display: grid; gap: 8px; padding: 12px; }
 .editor-section label { display: grid; grid-template-columns: 1fr minmax(100px, 1.35fr); gap: 8px; align-items: center; font-size: 13px; }
 .editor-section input, .editor-section select, .editor-section textarea, .map-editor-shell header select { width: 100%; box-sizing: border-box; color: #fff8e8; background: #100d0b; border: 1px solid #725a42; border-radius: 4px; padding: 7px; }
@@ -50,9 +62,13 @@
 .overlay-spawn-marker { padding: 4px 8px; border: 2px solid #58e6ff; border-radius: 999px; background: rgba(5, 35, 43, .9); color: #d7fbff; font: 700 12px/1 system-ui, sans-serif; box-shadow: 0 0 14px rgba(88, 230, 255, .7); pointer-events: none; }
 .overlay-navigation-label { padding: 4px 8px; border: 2px solid #58e6ff; border-radius: 999px; background: rgba(5, 35, 43, .9); color: #d7fbff; font: 700 12px/1 system-ui, sans-serif; box-shadow: 0 0 14px rgba(88, 230, 255, .7); pointer-events: none; white-space: nowrap; }
 .overlay-navigation-label.is-portal { border-color: #d9a7ff; background: rgba(48, 18, 66, .9); color: #f3dcff; box-shadow: 0 0 14px rgba(173, 88, 255, .7); }
-.map-viewport g.entry-point-marker { pointer-events: none; }
+.map-viewport g.entry-point-marker { pointer-events: auto; }
 .map-viewport g.entry-point-marker line { stroke: #7de3ff; stroke-width: 5; }
-.map-viewport g.entry-point-marker circle { fill: #123d4a; stroke: #7de3ff; stroke-width: 5; cursor: default; }
+.map-viewport g.entry-point-marker circle { fill: #123d4a; stroke: #7de3ff; stroke-width: 5; cursor: move; touch-action: none; }
+.map-viewport g.entry-point-marker.selected circle { fill: #21677a; outline: 3px solid rgba(255, 255, 255, .8); }
+.map-viewport g.npc-position-marker circle { fill: #8a5a20; stroke: #ffe0a1; stroke-width: 5; cursor: move; touch-action: none; }
+.map-viewport g.npc-position-marker.selected circle { fill: #bd8032; outline: 3px solid rgba(255, 255, 255, .8); }
+.map-viewport g.npc-position-marker text { fill: #fff4d8; paint-order: stroke; stroke: #24170b; stroke-width: 5; font: 700 18px/1 system-ui, sans-serif; pointer-events: none; }
 .map-viewport g.portal-trigger .portal-radius { fill: rgba(195, 104, 255, .2); stroke: #d79cff; stroke-width: 4; stroke-dasharray: 10 7; cursor: pointer; }
 .map-viewport g.portal-trigger .portal-handle { fill: #6c2b8f; stroke: #f3d8ff; stroke-width: 5; cursor: move; }
 .map-viewport g.portal-trigger.selected .portal-radius { fill: rgba(230, 164, 255, .3); stroke: #f0c8ff; stroke-width: 6; }

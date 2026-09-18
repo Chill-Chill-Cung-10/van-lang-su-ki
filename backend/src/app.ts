@@ -7,6 +7,7 @@ import { tutorRoutes } from "./routes/tutor.js";
 import { mapsRoutes } from "./routes/maps.js";
 import { mapFlowsRoutes } from "./routes/map-flows.js";
 import { assetsRoutes } from "./routes/assets.js";
+import { questionRoutes } from "./routes/questions.js";
 
 export function buildApp() {
   const env = getServerEnv();
@@ -24,6 +25,7 @@ export function buildApp() {
   app.register(mapsRoutes);
   app.register(mapFlowsRoutes);
   app.register(assetsRoutes);
+  app.register(questionRoutes);
 
   return app;
 }

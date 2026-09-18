@@ -1,5 +1,43 @@
 import { boolean, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 
+export const stages = pgTable("stages", {
+  code: text("code").primaryKey(),
+  chapter: integer("chapter").notNull().default(1),
+  stageType: text("stage_type").notNull(),
+  displayName: text("display_name").notNull(),
+  description: text("description").notNull().default(""),
+  unlockCondition: text("unlock_condition").notNull().default(""),
+  questionsPerRun: integer("questions_per_run").notNull(),
+  enemyHp: integer("enemy_hp").notNull(),
+  damagePerCorrect: integer("damage_per_correct").notNull().default(10),
+  difficultyDistribution: jsonb("difficulty_distribution").notNull().default({}),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const questions = pgTable("questions", {
+  id: text("id").primaryKey(),
+  stageCode: text("stage_code").notNull().references(() => stages.code, { onDelete: "restrict" }),
+  chapter: integer("chapter").notNull().default(1),
+  sortOrder: integer("sort_order").notNull(),
+  topic: text("topic").notNull(),
+  difficultyLevel: text("difficulty_level").notNull(),
+  competency: text("competency").notNull(),
+  questionText: text("question_text").notNull(),
+  options: text("options").array().notNull(),
+  correctOptionIndex: integer("correct_option_index").notNull(),
+  hint: text("hint"),
+  feedbacks: text("feedbacks").array().notNull(),
+  generalExplanation: text("general_explanation"),
+  sourceLabel: text("source_label"),
+  sourceCode: text("source_code"),
+  damage: integer("damage").notNull().default(10),
+  aiTag: text("ai_tag"),
+  drawGroup: text("draw_group").notNull(),
+  reviewStatus: text("review_status").notNull().default("pending_review"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const playerProfiles = pgTable("player_profiles", {
   id: uuid("id").primaryKey().defaultRandom(),
   displayName: text("display_name").notNull(),

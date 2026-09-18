@@ -14,6 +14,7 @@ import {
   type MapObject,
   type MapRevisionEnvelope,
   type MapSummary,
+  type MapValidationIssue,
   type Vec2,
 } from "@van-lang/map-contract";
 import Link from "next/link";
@@ -36,6 +37,40 @@ const clone = <T,>(value: T): T => structuredClone(value);
 const numberValue = (value: string) => Number.isFinite(Number(value)) ? Number(value) : 0;
 type ViewportMode = "2d" | "3d" | "overlay";
 type EditorTab = "map" | "flow";
+type ValidationGroup = "geometry" | "entry" | "portal" | "npc" | "map";
+
+const issueGroup = (issue: MapValidationIssue): ValidationGroup => issue.npcId ? "npc"
+  : issue.portalId || issue.path.startsWith("portals.") ? "portal"
+  : issue.path.startsWith("navigation.entryPoints.") || issue.code === "INVALID_SPAWN" ? "entry"
+  : issue.polygonId || issue.objectId || issue.path.includes("collider") || issue.path.startsWith("navigation.walkablePolygons.") ? "geometry"
+  : "map";
+const issueKey = (issue: MapValidationIssue) => `${issue.code}:${issue.path}`;
+
+function prepareDocumentForSave(document: MapDocument) {
+  const repaired = clone(document);
+  const adjustedEntryPointIds: string[] = [];
+  const adjustedPortalIds: string[] = [];
+  for (const entry of repaired.navigation.entryPoints) {
+    if (isPositionValid(repaired, entry.position)) continue;
+    const position = nearestValidPoint(repaired, entry.position);
+    if (!position) continue;
+    entry.position = position;
+    adjustedEntryPointIds.push(entry.id);
+  }
+  for (const portal of repaired.portals) {
+    if (isPositionValid(repaired, portal.trigger.center)) continue;
+    const center = nearestValidPoint(repaired, portal.trigger.center);
+    if (!center) continue;
+    portal.trigger.center = center;
+    adjustedPortalIds.push(portal.id);
+  }
+  return { repaired, adjustedEntryPointIds, adjustedPortalIds };
+}
+
+function ValidationMessages({ issues }: { issues: MapValidationIssue[] }) {
+  if (!issues.length) return null;
+  return <ul className="editor-inline-issues">{issues.map((issue, index) => <li key={`${issueKey(issue)}-${index}`}>{issue.message}</li>)}</ul>;
+}
 
 function createObject(document: MapDocument, asset: (typeof ASSETS)[number]): MapObject {
   let suffix = document.objects.length + 1;
@@ -79,24 +114,16 @@ function MapViewport({ document, mode, onModeChange, polygonId, onPolygonSelect,
   const footprints = document.objects.map((object) => ({ id: object.id, footprint: colliderFootprint(object) })).filter((item) => item.footprint);
   const selectedEntryPoint = document.navigation.entryPoints.find((entry) => entry.id === selectedEntryPointId) ?? null;
   const spawnMarker = toCanvas(document.navigation.spawn);
-  const entryPointMarker = selectedEntryPoint ? (() => {
-    const radians = selectedEntryPoint.facingDeg * Math.PI / 180;
-    return {
-      center: toCanvas(selectedEntryPoint.position),
-      facing: toCanvas({ x: selectedEntryPoint.position.x + Math.sin(radians) * 0.45, z: selectedEntryPoint.position.z + Math.cos(radians) * 0.45 }),
-    };
-  })() : null;
   return (
     <section className={`map-viewport is-${mode}`} aria-label={mode === "2d" ? "Map viewport 2D" : mode === "overlay" ? "Map viewport Overlay" : "Map viewport 3D"}>
       <div className="viewport-mode-switch" role="group" aria-label="Chế độ xem viewport">
-        <button type="button" className={mode === "2d" ? "active" : ""} aria-pressed={mode === "2d"} onClick={() => onModeChange("2d")}>2D chỉnh vùng</button>
         <button type="button" className={mode === "3d" ? "active" : ""} aria-pressed={mode === "3d"} onClick={() => { setPreviewReady(false); onModeChange("3d"); }}>3D góc người chơi</button>
         <button type="button" className={mode === "overlay" ? "active" : ""} aria-pressed={mode === "overlay"} onClick={() => { setPreviewReady(false); onModeChange("overlay"); }}>Overlay vùng</button>
       </div>
       {mode === "2d" ? <>
         <Image unoptimized fill src={document.background.src} alt={document.background.alt} style={{ objectFit: document.background.fit }} />
         {document.objects.filter((object): object is Extract<MapObject, { kind: "sprite2d" }> => object.kind === "sprite2d" && object.enabled).map((object) => <Image unoptimized width={1} height={1} className="viewport-sprite" key={object.id} src={object.src} alt={object.alt} style={{ left: `${object.transform2d.position.x * 100}%`, top: `${object.transform2d.position.y * 100}%`, width: `${object.transform2d.size.width * 100}%`, height: `${object.transform2d.size.height * 100}%`, transform: `translate(${-object.transform2d.anchor.x * 100}%, ${-object.transform2d.anchor.y * 100}%) rotate(${object.transform2d.rotationDeg}deg) scale(${object.transform2d.scale.x}, ${object.transform2d.scale.y})` }} />)}
-        <svg className={drawing ? "is-drawing" : ""} viewBox="0 0 1000 1000" onPointerMove={(event) => { const point = fromPointer(event); if (dragging) onPointMove(dragging.polygonId, dragging.index, point); if (draggingPortalId) onPortalMove(draggingPortalId, point); }} onPointerUp={() => { setDragging(null); setDraggingPortalId(null); }} onClick={(event) => { if (drawing) onDraftPoint(fromPointer(event)); }}>
+        <svg className={drawing ? "is-drawing" : ""} viewBox="0 0 1000 1000" onPointerMove={(event) => { const point = fromPointer(event); if (dragging) onPointMove(dragging.polygonId, dragging.index, point); if (draggingEntryPointId) onEntryPointMove(draggingEntryPointId, point); if (draggingPortalId) onPortalMove(draggingPortalId, point); if (draggingNpcId) onNpcMove(draggingNpcId, { x: point.x, y: document.world.groundY, z: point.z }); }} onPointerUp={() => { setDragging(null); setDraggingEntryPointId(null); setDraggingPortalId(null); setDraggingNpcId(null); }} onPointerCancel={() => { setDragging(null); setDraggingEntryPointId(null); setDraggingPortalId(null); setDraggingNpcId(null); }} onClick={(event) => { if (drawing) onDraftPoint(fromPointer(event)); }}>
           {document.navigation.walkablePolygons.filter((polygon) => polygon.enabled).map((polygon) => (
             <g key={polygon.id} className={polygon.id === polygonId ? "selected" : ""} onClick={(event) => { if (!drawing) { event.stopPropagation(); onPolygonSelect(polygon.id); } }}>
               <polygon className="walkable-shape" points={polygon.points.map((point) => { const item = toCanvas(point); return `${item.x},${item.y}`; }).join(" ")} />
@@ -108,14 +135,15 @@ function MapViewport({ document, mode, onModeChange, polygonId, onPolygonSelect,
           {footprints.map(({ id, footprint }) => footprint?.type === "circle" ? (() => { const center = toCanvas(footprint.center); return <circle className="collider" key={id} cx={center.x} cy={center.y} r={footprint.radius / 12 * 1000} />; })() : footprint?.type === "polygon" ? <polygon className="collider" key={id} points={footprint.points.map((point) => { const item = toCanvas(point); return `${item.x},${item.y}`; }).join(" ")} /> : null)}
           {document.portals.filter((portal) => portal.enabled).map((portal) => { const center = toCanvas(portal.trigger.center); return <g key={portal.id} className={`portal-trigger${portal.id === selectedPortalId ? " selected" : ""}`} onClick={(event) => { event.stopPropagation(); onPortalSelect(portal.id); }}><circle className="portal-radius" cx={center.x} cy={center.y} r={portal.trigger.radius / 12 * 1000} /><circle className="portal-handle" cx={center.x} cy={center.y} r="13" role="button" aria-label={`Di chuyển portal ${portal.id}`} onPointerDown={(event) => { event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId); onPortalSelect(portal.id); setDraggingPortalId(portal.id); }} /></g>; })}
           <g className="spawn-marker" role="img" aria-label="Spawn point"><circle cx={spawnMarker.x} cy={spawnMarker.y} r="15" /><path d={`M ${spawnMarker.x} ${spawnMarker.y - 24} L ${spawnMarker.x} ${spawnMarker.y + 24} M ${spawnMarker.x - 24} ${spawnMarker.y} L ${spawnMarker.x + 24} ${spawnMarker.y}`} /></g>
-          {entryPointMarker ? <g className="entry-point-marker" aria-label={`Entrypoint ${selectedEntryPoint?.id}`}><line x1={entryPointMarker.center.x} y1={entryPointMarker.center.y} x2={entryPointMarker.facing.x} y2={entryPointMarker.facing.y} /><circle cx={entryPointMarker.center.x} cy={entryPointMarker.center.y} r="13" /></g> : null}
+          {document.navigation.entryPoints.map((entryPoint) => { const center = toCanvas(entryPoint.position); const radians = entryPoint.facingDeg * Math.PI / 180; const facing = toCanvas({ x: entryPoint.position.x + Math.sin(radians) * 0.45, z: entryPoint.position.z + Math.cos(radians) * 0.45 }); return <g key={entryPoint.id} className={`entry-point-marker${entryPoint.id === selectedEntryPointId ? " selected" : ""}`} aria-label={`Entrypoint ${entryPoint.id}`} onClick={(event) => { event.stopPropagation(); onEntryPointSelect(entryPoint.id); }}><line x1={center.x} y1={center.y} x2={facing.x} y2={facing.y} /><circle cx={center.x} cy={center.y} r="13" role="button" aria-label={`Di chuyển entrypoint ${entryPoint.id}`} onPointerDown={(event) => { event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId); onEntryPointSelect(entryPoint.id); setDraggingEntryPointId(entryPoint.id); }} /></g>; })}
+          {document.npcs.map((npc) => { const center = toCanvas({ x: npc.transform.position.x, z: npc.transform.position.z }); return <g key={npc.id} className={`npc-position-marker${npc.id === selectedNpcId ? " selected" : ""}`} aria-label={`NPC ${npc.name}`} onClick={(event) => { event.stopPropagation(); onNpcSelect(npc.id); }}><circle cx={center.x} cy={center.y} r="13" role="button" aria-label={`Di chuyển NPC ${npc.name}`} onPointerDown={(event) => { event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId); onNpcSelect(npc.id); setDraggingNpcId(npc.id); }} /><text x={center.x} y={center.y - 20} textAnchor="middle">{npc.name}</text></g>; })}
         </svg>
-        <p>{drawing ? "Click trên viewport để đặt điểm; đủ 3 điểm thì đóng polygon." : "Vòng tím là vùng kích hoạt portal; kéo tâm tím để đặt điểm teleport."}</p>
+        <p>{drawing ? "Click trên viewport để đặt điểm; đủ 3 điểm thì đóng polygon." : "Giữ và kéo entrypoint, NPC hoặc tâm portal để đặt nhanh vị trí."}</p>
       </> : <div className="viewport-3d">
         <Image unoptimized fill className="viewport-3d-background" src={document.background.src} alt="" aria-hidden="true" style={{ objectFit: document.background.fit }} />
-        <DungeonPreview key={mode} mapDocument={document} playerPos={{ x: selectedEntryPoint?.position.x ?? document.navigation.spawn.x, y: selectedEntryPoint?.position.z ?? document.navigation.spawn.z }} facing={(selectedEntryPoint?.facingDeg ?? 0) * Math.PI / 180} isMoving={false} onSceneReady={markPreviewReady} selectedNpcId={selectedNpcId} onNpcSelect={onNpcSelect} onNpcMove={onNpcMove} editorOverlay={{ selectedPolygonId: polygonId, selectedEntryPointId, selectedPortalId, showAllPolygons: mode === "overlay", editablePolygons: mode === "overlay", onPolygonSelect, onPortalSelect, onPointMove, onPointInsert }} />
+        <DungeonPreview key={mode} mapDocument={document} playerPos={{ x: selectedEntryPoint?.position.x ?? document.navigation.spawn.x, y: selectedEntryPoint?.position.z ?? document.navigation.spawn.z }} facing={(selectedEntryPoint?.facingDeg ?? 0) * Math.PI / 180} isMoving={false} onSceneReady={markPreviewReady} selectedNpcId={selectedNpcId} onNpcSelect={onNpcSelect} onNpcMove={onNpcMove} editorOverlay={{ selectedPolygonId: polygonId, selectedEntryPointId, selectedPortalId, showAllPolygons: mode === "overlay", editablePolygons: true, editableNavigation: true, drawing, draft, onPolygonSelect, onEntryPointSelect, onPortalSelect, onPointMove, onPointInsert, onDraftPoint, onEntryPointMove, onPortalMove }} />
         {previewReady
-          ? <p role="status">{mode === "overlay" ? "Overlay đã sẵn sàng: kéo điểm lớn để chỉnh vùng, click điểm nhỏ để chèn; xanh là walkable, vàng là vùng đang chọn, đỏ là collider." : "Preview 3D đã sẵn sàng. Camera, GLB và transform đang dùng đúng cấu hình runtime."}</p>
+          ? <p role="status">{drawing ? "Click trực tiếp trên scene để đặt điểm; đủ 3 điểm thì đóng polygon." : mode === "overlay" ? "Overlay đã sẵn sàng: kéo điểm lớn để chỉnh vùng, entrypoint hoặc portal; xanh là walkable, vàng là vùng đang chọn, đỏ là collider." : "Preview 3D đã sẵn sàng: vùng đang chọn, entrypoint, portal và NPC đều có thể chỉnh trực tiếp theo đúng runtime."}</p>
           : <div className="viewport-3d-loading" role="status">Đang tải mô hình 3D…</div>}
       </div>}
     </section>
@@ -139,8 +167,9 @@ function ColliderFields({ object, mutateObject, setCollider }: {
   </>;
 }
 
-function NpcFields({ npc, document, mutateNpc }: { npc: MapNpc; document: MapDocument; mutateNpc: (recipe: (npc: MapNpc) => void) => void }) {
+function NpcFields({ npc, document, issues, mutateNpc }: { npc: MapNpc; document: MapDocument; issues: MapValidationIssue[]; mutateNpc: (recipe: (npc: MapNpc) => void) => void }) {
   return <details open><summary>NPC</summary><div className="editor-section">
+    <ValidationMessages issues={issues} />
     <label><span>NPC ID</span><input readOnly value={npc.id} /></label>
     <label><span>Tên</span><input value={npc.name} onChange={(event) => mutateNpc((item) => { item.name = event.target.value; })} /></label>
     <label><span>Runtime GLB</span><input readOnly value={npc.src} /></label>
@@ -329,7 +358,8 @@ export function MapEditorShell() {
   const [npcDialogue, setNpcDialogue] = useState("");
   const [importing, setImporting] = useState(false);
   const [selectedPolygonId, setSelectedPolygonId] = useState<string | null>(null);
-  const [viewportMode, setViewportMode] = useState<ViewportMode>("2d");
+  const [viewportMode, setViewportModeState] = useState<ViewportMode>("overlay");
+  const setViewportMode = (mode: ViewportMode) => setViewportModeState(mode === "2d" ? "overlay" : mode);
   const [draftPoints, setDraftPoints] = useState<Vec2[]>([]);
   const [drawing, setDrawing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -339,12 +369,32 @@ export function MapEditorShell() {
   const saveInFlight = useRef(false);
   const dirty = Boolean(document && envelope && canonicalStringify(document) !== canonicalStringify(envelope.document));
   const validation = useMemo(() => document ? validateMapDocument(document) : null, [document]);
+  const preparedValidation = useMemo(() => document ? validateMapDocument(prepareDocumentForSave(document).repaired) : null, [document]);
+  const validationIssues = validation && !validation.success ? validation.issues : [];
+  const blockingIssues = preparedValidation && !preparedValidation.success ? preparedValidation.issues : [];
+  const blockingIssueKeys = new Set(blockingIssues.map(issueKey));
+  const repairableIssues = validationIssues.filter((issue) => !blockingIssueKeys.has(issueKey(issue)));
+  const issuesByGroup = Object.fromEntries((["geometry", "entry", "portal", "npc", "map"] as const).map((group) => [group, validationIssues.filter((issue) => issueGroup(issue) === group)])) as Record<ValidationGroup, MapValidationIssue[]>;
+  const saveBlocked = drawing || blockingIssues.length > 0;
   const selectedObject = document?.objects.find((object) => object.id === selectedObjectId) ?? null;
   const selectedEntryPoint = document?.navigation.entryPoints.find((entry) => entry.id === selectedEntryPointId) ?? null;
   const selectedPortal = document?.portals.find((portal) => portal.id === selectedPortalId) ?? null;
   const selectedNpc = document?.npcs.find((npc) => npc.id === selectedNpcId) ?? null;
   const selectedPolygon = document?.navigation.walkablePolygons.find((polygon) => polygon.id === selectedPolygonId) ?? null;
   const flowOutOfSync = Boolean(flowPin && envelope && flowPin.mapRevision !== envelope.revision);
+
+  const focusIssue = (issue: MapValidationIssue) => {
+    setTab("map");
+    if (issue.objectId) { setSelectedObjectId(issue.objectId); setSelectedNpcId(null); setViewportMode("overlay"); }
+    if (issue.npcId) { setSelectedNpcId(issue.npcId); setSelectedObjectId(null); setViewportMode("overlay"); }
+    if (issue.polygonId) { setSelectedPolygonId(issue.polygonId); setViewportMode("overlay"); }
+    if (issue.portalId) { setSelectedPortalId(issue.portalId); setViewportMode("overlay"); }
+    const entryIndex = issue.path.match(/^navigation\.entryPoints\.(\d+)/)?.[1];
+    if (entryIndex !== undefined) {
+      setSelectedEntryPointId(document?.navigation.entryPoints[Number(entryIndex)]?.id ?? null);
+      setViewportMode("overlay");
+    }
+  };
 
   const openMap = async (mapId: string) => {
     setLoading(true); setError(""); setNotice("");
@@ -400,23 +450,7 @@ export function MapEditorShell() {
     setError(""); setNotice("");
     if (drawing) { setError("Polygon đang vẽ chưa được đóng."); return; }
     const sourceCanonical = canonicalStringify(document);
-    const repaired = clone(document);
-    const adjustedEntryPointIds: string[] = [];
-    const adjustedPortalIds: string[] = [];
-    for (const entry of repaired.navigation.entryPoints) {
-      if (isPositionValid(repaired, entry.position)) continue;
-      const position = nearestValidPoint(repaired, entry.position);
-      if (!position) continue;
-      entry.position = position;
-      adjustedEntryPointIds.push(entry.id);
-    }
-    for (const portal of repaired.portals) {
-      if (!portal.enabled || isPositionValid(repaired, portal.trigger.center)) continue;
-      const center = nearestValidPoint(repaired, portal.trigger.center);
-      if (!center) continue;
-      portal.trigger.center = center;
-      adjustedPortalIds.push(portal.id);
-    }
+    const { repaired, adjustedEntryPointIds, adjustedPortalIds } = prepareDocumentForSave(document);
     const submittedValidation = validateMapDocument(repaired);
     if (!submittedValidation.success) { setError("Map còn lỗi validation. Hãy sửa trước khi lưu."); return; }
     const submitted = clone(submittedValidation.document);
@@ -513,8 +547,13 @@ export function MapEditorShell() {
 
   return (
     <main id="noi-dung-chinh" className="map-editor-shell">
-      <header><div><p>Admin · Editor Mode</p><h1>Map Editor</h1></div><nav className="editor-tabs" aria-label="Editor tabs"><button className={tab === "map" ? "active" : ""} onClick={() => setTab("map")}>Map</button><button className={tab === "flow" ? "active" : ""} onClick={() => setTab("flow")}>Map Flow</button></nav>{tab === "map" ? <><button type="button" className="create-map-button" onClick={() => setTab("flow")}>+ Tạo map mới</button><label>Map<select value={document.mapId} onChange={(event) => selectMap(event.target.value)}>{maps.map((map) => <option key={map.mapId} value={map.mapId}>{map.name} · r{map.activeRevision}</option>)}</select></label><div className="header-save-controls"><span className={dirty || flowOutOfSync ? "dirty" : ""}>{dirty ? "Chưa lưu" : flowOutOfSync ? `Flow đang ở r${flowPin?.mapRevision}` : `Revision ${envelope.revision}`}</span><button type="button" className="header-save-button" disabled={!WRITE_ENABLED || saving || (!dirty && !flowOutOfSync)} aria-busy={saving} onClick={save}>{saving ? "Đang lưu…" : flowOutOfSync && !dirty ? "Đồng bộ Flow" : "Lưu map"}</button></div></> : null}<Link href="/" onClick={(event) => { if (!confirmDiscard()) event.preventDefault(); }}>Về game</Link></header>
+      <header><div><p>Admin · Editor Mode</p><h1>Map Editor</h1></div><nav className="editor-tabs" aria-label="Editor tabs"><button className={tab === "map" ? "active" : ""} onClick={() => setTab("map")}>Map</button><button className={tab === "flow" ? "active" : ""} onClick={() => setTab("flow")}>Map Flow</button></nav>{tab === "map" ? <><button type="button" className="create-map-button" onClick={() => setTab("flow")}>+ Tạo map mới</button><label>Map<select value={document.mapId} onChange={(event) => selectMap(event.target.value)}>{maps.map((map) => <option key={map.mapId} value={map.mapId}>{map.name} · r{map.activeRevision}</option>)}</select></label><div className="header-save-controls"><span className={blockingIssues.length ? "invalid" : dirty || flowOutOfSync ? "dirty" : ""}>{blockingIssues.length ? `${blockingIssues.length} lỗi chặn lưu` : dirty ? "Chưa lưu" : flowOutOfSync ? `Flow đang ở r${flowPin?.mapRevision}` : `Revision ${envelope.revision}`}</span><button type="button" className="header-save-button" disabled={!WRITE_ENABLED || saving || saveBlocked || (!dirty && !flowOutOfSync)} title={saveBlocked ? drawing ? "Đóng hoặc hủy polygon đang vẽ trước khi lưu." : "Sửa các lỗi validation trước khi lưu." : undefined} aria-busy={saving} onClick={save}>{saving ? "Đang lưu…" : flowOutOfSync && !dirty ? "Đồng bộ Flow" : "Lưu map"}</button></div></> : null}<Link href="/" onClick={(event) => { if (!confirmDiscard()) event.preventDefault(); }}>Về game</Link></header>
       {tab === "flow" ? <MapFlowPanel onDirtyChange={setFlowDirty} onMapCreated={(created) => { setMaps((current) => [...current, { mapId: created.mapId, name: created.document.metadata.name, description: created.document.metadata.description, activeRevision: created.revision, updatedAt: created.activatedAt }]); setEnvelope(created); setDocument(clone(created.document)); setSelectedEntryPointId(created.document.navigation.entryPoints[0]?.id ?? null); }} /> : <><aside>
+        <section className={`editor-validation-summary ${saveBlocked ? "has-errors" : validationIssues.length ? "has-warnings" : "is-valid"}`} aria-live="polite" aria-atomic="false">
+          <div><strong>{drawing ? "Polygon chưa đóng đang chặn lưu" : blockingIssues.length ? `${blockingIssues.length} lỗi đang chặn lưu` : validationIssues.length ? `${validationIssues.length} cảnh báo sẽ được tự căn khi lưu` : "Map hợp lệ, sẵn sàng lưu"}</strong>{repairableIssues.length ? <small>Entry point hoặc portal ngoài vùng hợp lệ sẽ được đưa về điểm gần nhất.</small> : null}</div>
+          {validationIssues.length ? <ul>{validationIssues.map((issue, index) => <li key={`${issueKey(issue)}-${index}`}><button type="button" onClick={() => focusIssue(issue)}><span>{issueGroup(issue) === "geometry" ? "Vùng / Collider" : issueGroup(issue) === "entry" ? "Entry point" : issueGroup(issue) === "portal" ? "Portal" : issueGroup(issue) === "npc" ? "NPC" : "Map"}</span>{issue.message}</button></li>)}</ul> : null}
+          {drawing ? <p>Polygon đang vẽ chưa được đóng. Đóng hoặc hủy polygon để có thể lưu.</p> : null}
+        </section>
         <details open><summary>NPC GLB</summary><div className="editor-section"><label><span>GLB</span><input aria-label="NPC GLB" type="file" accept=".glb,model/gltf-binary" onChange={(event) => setNpcFile(event.target.files?.[0] ?? null)} /></label><label><span>NPC ID</span><input value={npcId} onChange={(event) => setNpcId(event.target.value)} /></label><label><span>Tên</span><input value={npcName} onChange={(event) => setNpcName(event.target.value)} /></label><label><span>Hội thoại</span><textarea value={npcDialogue} onChange={(event) => setNpcDialogue(event.target.value)} /></label><button type="button" disabled={!WRITE_ENABLED || importing} onClick={() => void importNpc()}>{importing ? "Đang import…" : "Import và thêm NPC"}</button></div></details>
         <details><summary>Assets</summary><div className="editor-section">{ASSETS.map((asset) => <button key={asset.src + asset.kind} onClick={() => mutate((next) => { const object = createObject(next, asset); next.objects.push(object); setSelectedObjectId(object.id); setSelectedNpcId(null); })}>+ {asset.name}</button>)}</div></details>
         <details open><summary>Scene Objects</summary><div className="editor-section object-list">{document.objects.map((object) => <button className={object.id === selectedObjectId ? "active" : ""} key={object.id} onClick={() => setSelectedObjectId(object.id)}>{object.name} <small>{object.kind}</small></button>)}<div className="row"><button disabled={!selectedObject} onClick={() => selectedObject && mutate((next) => { const copy = clone(selectedObject); copy.id = `${copy.id}-copy-${Date.now().toString(36)}`; copy.name += " bản sao"; delete copy.binding; next.objects.push(copy); setSelectedObjectId(copy.id); })}>Duplicate</button><button disabled={!selectedObject} onClick={() => mutate((next) => { next.objects = next.objects.filter((item) => item.id !== selectedObjectId); setSelectedObjectId(null); })}>Delete</button></div></div></details>
@@ -525,9 +564,9 @@ export function MapEditorShell() {
         <details open><summary>Map Settings / Save</summary><div className="editor-section"><label><span>Tên map</span><input value={document.metadata.name} onChange={(event) => mutate((next) => { next.metadata.name = event.target.value; })} /></label><label><span>Mô tả</span><textarea value={document.metadata.description} onChange={(event) => mutate((next) => { next.metadata.description = event.target.value; })} /></label><label><span>Background</span><input value={document.background.src} onChange={(event) => mutate((next) => { next.background.src = event.target.value; })} /></label><label><span>Màu fallback</span><input value={document.background.color} onChange={(event) => mutate((next) => { next.background.color = event.target.value; })} /></label><div className="save-row"><span className={dirty || flowOutOfSync ? "dirty" : ""}>{dirty ? "Chưa lưu" : flowOutOfSync ? `Map Flow đang pin r${flowPin?.mapRevision}, active là r${envelope.revision}` : `Revision ${envelope.revision} đã đồng bộ`}</span><button disabled={!WRITE_ENABLED || saving || (!dirty && !flowOutOfSync)} onClick={save}>{saving ? "Đang lưu…" : flowOutOfSync && !dirty ? "Đồng bộ Flow" : "Save"}</button><button disabled={!dirty} onClick={() => { setDocument(clone(envelope.document)); setDraftPoints([]); setDrawing(false); }}>Reset</button></div>{!WRITE_ENABLED ? <small>Save đang tắt bởi NEXT_PUBLIC_MAP_EDITOR_WRITE_ENABLED.</small> : null}</div></details>
         {selectedObject ? <details open><summary>Collider Details</summary><div className="editor-section"><ColliderFields object={selectedObject} mutateObject={mutateObject} setCollider={setCollider} /></div></details> : null}
       </aside>
-      <MapViewport key={document.mapId} document={document} mode={viewportMode} onModeChange={setViewportMode} polygonId={selectedPolygonId} onPolygonSelect={setSelectedPolygonId} drawing={drawing} draft={draftPoints} onDraftPoint={(point) => drawing && setDraftPoints((current) => [...current, point])} onPointInsert={(polygonId, index, point) => mutate((next) => { const polygon = next.navigation.walkablePolygons.find((item) => item.id === polygonId); if (polygon) polygon.points.splice(index, 0, point); })} onPointMove={(polygonId, index, point) => mutate((next) => { const polygon = next.navigation.walkablePolygons.find((item) => item.id === polygonId); if (polygon) polygon.points[index] = point; })} selectedEntryPointId={selectedEntryPointId} selectedPortalId={selectedPortalId} onPortalSelect={setSelectedPortalId} onPortalMove={(portalId, point) => { if (isPositionValid(document, point)) mutate((next) => { const portal = next.portals.find((item) => item.id === portalId); if (portal) portal.trigger.center = point; }); }} selectedNpcId={selectedNpcId} onNpcSelect={(id) => { setSelectedNpcId(id); setSelectedObjectId(null); }} onNpcMove={(id, position) => { if (isPositionValid(document, { x: position.x, z: position.z }, 0)) mutateNpc(id, (npc) => { npc.transform.position = position; }); }} /></>}
-      <footer>{error ? <p role="alert">{error}</p> : null}{notice ? <p role="status">{notice}</p> : null}{validation && !validation.success ? <ul>{validation.issues.slice(0, 6).map((issue, index) => <li key={`${issue.path}-${index}`}>{issue.path}: {issue.message}</li>)}</ul> : null}</footer>
-      {selectedNpc ? <aside><NpcFields npc={selectedNpc} document={document} mutateNpc={(recipe) => mutateNpc(selectedNpc.id, recipe)} /></aside> : null}
+      <MapViewport key={document.mapId} document={document} mode={viewportMode} onModeChange={setViewportMode} polygonId={selectedPolygonId} onPolygonSelect={setSelectedPolygonId} drawing={drawing} draft={draftPoints} onDraftPoint={(point) => drawing && setDraftPoints((current) => [...current, point])} onPointInsert={(polygonId, index, point) => mutate((next) => { const polygon = next.navigation.walkablePolygons.find((item) => item.id === polygonId); if (polygon) polygon.points.splice(index, 0, point); })} onPointMove={(polygonId, index, point) => mutate((next) => { const polygon = next.navigation.walkablePolygons.find((item) => item.id === polygonId); if (polygon) polygon.points[index] = point; })} selectedEntryPointId={selectedEntryPointId} onEntryPointSelect={setSelectedEntryPointId} onEntryPointMove={(entryPointId, point) => { if (isPositionValid(document, point)) mutate((next) => { const entryPoint = next.navigation.entryPoints.find((item) => item.id === entryPointId); if (entryPoint) entryPoint.position = point; }); }} selectedPortalId={selectedPortalId} onPortalSelect={setSelectedPortalId} onPortalMove={(portalId, point) => { if (isPositionValid(document, point)) mutate((next) => { const portal = next.portals.find((item) => item.id === portalId); if (portal) portal.trigger.center = point; }); }} selectedNpcId={selectedNpcId} onNpcSelect={(id) => { setSelectedNpcId(id); setSelectedObjectId(null); }} onNpcMove={(id, position) => { if (isPositionValid(document, { x: position.x, z: position.z }, 0)) mutateNpc(id, (npc) => { npc.transform.position = position; }); }} /></>}
+      <footer>{error ? <p role="alert">{error}</p> : null}{notice ? <p role="status">{notice}</p> : null}{!error && !notice ? <p role="status">{blockingIssues.length ? "Map chưa thể lưu. Chọn một cảnh báo trong inspector để sửa." : repairableIssues.length ? "Map có cảnh báo vị trí; các điểm này sẽ được tự căn khi lưu." : "Không có lỗi validation."}</p> : null}</footer>
+      {selectedNpc ? <aside><NpcFields npc={selectedNpc} document={document} issues={issuesByGroup.npc.filter((issue) => issue.npcId === selectedNpc.id)} mutateNpc={(recipe) => mutateNpc(selectedNpc.id, recipe)} /></aside> : null}
     </main>
   );
 }

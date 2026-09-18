@@ -1,0 +1,232 @@
+[
+  {
+    "code": "M01",
+    "chapter": 1,
+    "stageType": "main",
+    "displayName": "Cánh cổng Hồng Bàng",
+    "description": "Kinh Dương Vương, tên Lộc Tục, Kỷ Hồng Bàng và quan hệ truyền thuyết",
+    "unlockCondition": "Hoàn thành phần hướng dẫn",
+    "questionsPerRun": 10,
+    "enemyHp": 100,
+    "damagePerCorrect": 10,
+    "difficultyDistribution": {
+      "recognize": 4,
+      "understand": 3,
+      "apply": 2,
+      "challenge": 1
+    },
+    "sortOrder": 1
+  },
+  {
+    "code": "M02",
+    "chapter": 1,
+    "stageType": "main",
+    "displayName": "Bia đá mất tên",
+    "description": "Sùng Lãm, giới hạn sử liệu, chứng cứ khảo cổ và yếu tố hư cấu",
+    "unlockCondition": "Vượt M01",
+    "questionsPerRun": 10,
+    "enemyHp": 100,
+    "damagePerCorrect": 10,
+    "difficultyDistribution": {
+      "recognize": 4,
+      "understand": 3,
+      "apply": 2,
+      "challenge": 1
+    },
+    "sortOrder": 2
+  },
+  {
+    "code": "M03",
+    "chapter": 1,
+    "stageType": "main",
+    "displayName": "Xứ sở trong màn sương",
+    "description": "Xích Quỷ, bản đồ phỏng dựng, đường biên và hệ thống nhãn nguồn",
+    "unlockCondition": "Vượt M02",
+    "questionsPerRun": 10,
+    "enemyHp": 100,
+    "damagePerCorrect": 10,
+    "difficultyDistribution": {
+      "recognize": 4,
+      "understand": 3,
+      "apply": 2,
+      "challenge": 1
+    },
+    "sortOrder": 3
+  },
+  {
+    "code": "M04",
+    "chapter": 1,
+    "stageType": "main",
+    "displayName": "Mảnh bản đồ chân thực",
+    "description": "Đối chiếu nguồn, giới hạn tọa độ, vật phẩm game và phân biệt Xích Quỷ – Văn Lang",
+    "unlockCondition": "Vượt M03",
+    "questionsPerRun": 10,
+    "enemyHp": 100,
+    "damagePerCorrect": 10,
+    "difficultyDistribution": {
+      "recognize": 4,
+      "understand": 3,
+      "apply": 2,
+      "challenge": 1
+    },
+    "sortOrder": 4
+  },
+  {
+    "code": "M05",
+    "chapter": 1,
+    "stageType": "main",
+    "displayName": "Dấu chân bên sông",
+    "description": "Nguồn nước, giao thông, sản xuất, rủi ro và lựa chọn nơi cư trú",
+    "unlockCondition": "Vượt M04",
+    "questionsPerRun": 10,
+    "enemyHp": 100,
+    "damagePerCorrect": 10,
+    "difficultyDistribution": {
+      "recognize": 4,
+      "understand": 3,
+      "apply": 2,
+      "challenge": 1
+    },
+    "sortOrder": 5
+  },
+  {
+    "code": "M06",
+    "chapter": 1,
+    "stageType": "main",
+    "displayName": "Làng cổ thức giấc",
+    "description": "Cộng đồng cổ, hiện vật, các lớp văn hóa khảo cổ và bối cảnh Văn Lang",
+    "unlockCondition": "Vượt M05",
+    "questionsPerRun": 10,
+    "enemyHp": 100,
+    "damagePerCorrect": 10,
+    "difficultyDistribution": {
+      "recognize": 4,
+      "understand": 3,
+      "apply": 2,
+      "challenge": 1
+    },
+    "sortOrder": 6
+  },
+  {
+    "code": "M07",
+    "chapter": 1,
+    "stageType": "main",
+    "displayName": "Phiên xét Người Giữ Sử",
+    "description": "Phân loại nguồn, giá trị truyền thuyết, 18 đời Vua Hùng và Thánh Gióng",
+    "unlockCondition": "Vượt M06",
+    "questionsPerRun": 10,
+    "enemyHp": 100,
+    "damagePerCorrect": 10,
+    "difficultyDistribution": {
+      "recognize": 4,
+      "understand": 3,
+      "apply": 2,
+      "challenge": 1
+    },
+    "sortOrder": 7
+  },
+  {
+    "code": "M08",
+    "chapter": 1,
+    "stageType": "main",
+    "displayName": "Trao Ấn Khởi Nguyên",
+    "description": "Văn Lang – Đông Sơn, Âu Lạc – Cổ Loa và mở đường tới Lạc Long Quân",
+    "unlockCondition": "Vượt M07",
+    "questionsPerRun": 10,
+    "enemyHp": 100,
+    "damagePerCorrect": 10,
+    "difficultyDistribution": {
+      "recognize": 4,
+      "understand": 3,
+      "apply": 2,
+      "challenge": 1
+    },
+    "sortOrder": 8
+  },
+  {
+    "code": "P01",
+    "chapter": 1,
+    "stageType": "side",
+    "displayName": "Kho thẻ nguồn",
+    "description": "Nhận biết và phân loại bốn nhóm thông tin",
+    "unlockCondition": "Mở sau M02",
+    "questionsPerRun": 5,
+    "enemyHp": 50,
+    "damagePerCorrect": 10,
+    "difficultyDistribution": {
+      "recognize": 2,
+      "understand": 2,
+      "apply": 1
+    },
+    "sortOrder": 9
+  },
+  {
+    "code": "P02",
+    "chapter": 1,
+    "stageType": "side",
+    "displayName": "Nhà khảo cổ trẻ",
+    "description": "Đọc hiện vật và suy luận thận trọng về cộng đồng cổ",
+    "unlockCondition": "Mở sau M05",
+    "questionsPerRun": 5,
+    "enemyHp": 50,
+    "damagePerCorrect": 10,
+    "difficultyDistribution": {
+      "recognize": 2,
+      "understand": 2,
+      "apply": 1
+    },
+    "sortOrder": 10
+  },
+  {
+    "code": "P03",
+    "chapter": 1,
+    "stageType": "side",
+    "displayName": "Người dựng bản đồ",
+    "description": "Kiểm tra đường biên, ký hiệu, thẻ nguồn và phần phỏng dựng",
+    "unlockCondition": "Mở sau M03",
+    "questionsPerRun": 5,
+    "enemyHp": 50,
+    "damagePerCorrect": 10,
+    "difficultyDistribution": {
+      "recognize": 2,
+      "understand": 2,
+      "apply": 1
+    },
+    "sortOrder": 11
+  },
+  {
+    "code": "P04",
+    "chapter": 1,
+    "stageType": "side",
+    "displayName": "Sứ giả chặng sau",
+    "description": "Trình tự huyền sử, 18 đời Vua Hùng và tín hiệu mở chặng tiếp theo",
+    "unlockCondition": "Mở sau M07",
+    "questionsPerRun": 5,
+    "enemyHp": 50,
+    "damagePerCorrect": 10,
+    "difficultyDistribution": {
+      "recognize": 2,
+      "understand": 2,
+      "apply": 1
+    },
+    "sortOrder": 12
+  },
+  {
+    "code": "B01",
+    "chapter": 1,
+    "stageType": "boss",
+    "displayName": "Bóng Sai Lệch",
+    "description": "Tổng hợp kiến thức, kiểm tra nguồn và sửa thông tin sai lệch",
+    "unlockCondition": "Vượt M08 và ít nhất 2 nhiệm vụ phụ",
+    "questionsPerRun": 20,
+    "enemyHp": 200,
+    "damagePerCorrect": 10,
+    "difficultyDistribution": {
+      "recognize": 4,
+      "understand": 6,
+      "apply": 6,
+      "challenge": 4
+    },
+    "sortOrder": 13
+  }
+]
