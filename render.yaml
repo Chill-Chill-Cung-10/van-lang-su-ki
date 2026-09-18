@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: van-lang-su-ki-api
+    runtime: node
+    plan: free
+    region: singapore
+    branch: main
+    autoDeployTrigger: commit
+    buildCommand: corepack enable && corepack prepare pnpm@11.19.0 --activate && pnpm install --frozen-lockfile --prod=false && pnpm --filter @van-lang/map-contract build && pnpm --filter @van-lang/backend build
+    startCommand: pnpm --dir backend db:migrate && pnpm --dir backend start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: FRONTEND_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: MAP_EDITOR_WRITE_ENABLED
+        value: "false"
+      - key: OPENAI_API_KEY
+        sync: false
