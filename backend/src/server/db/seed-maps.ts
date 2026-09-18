@@ -21,7 +21,7 @@ async function seedMaps() {
     if (!existing.rowCount) {
       const inserted = await client.query<{ id: string }>(
         `INSERT INTO map_revisions(map_id, revision, schema_version, document, checksum, created_by)
-         VALUES ($1, 1, 2, $2::jsonb, $3, 'seed') RETURNING id`,
+         VALUES ($1, 1, 3, $2::jsonb, $3, 'seed') RETURNING id`,
         [document.mapId, JSON.stringify(document), checksum],
       );
       await client.query(

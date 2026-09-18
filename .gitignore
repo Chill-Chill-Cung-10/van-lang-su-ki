@@ -34,6 +34,7 @@ Thumbs.db
 
 # Docker volumes when bind-mounted locally
 .data/
+backend/.runtime/
 
 # Word keeps a root copy open during local editing
 /DAU_AN_DAI_VIET_AI_REQUIREMENTS_VERSION_0.docx
@@ -41,6 +42,8 @@ Thumbs.db
 *.glb
 
 assets/
+!backend/src/server/assets/
+!backend/src/server/assets/*.ts
 .codex/
 SKILL.md
 # Approved optimized owner-provided runtime models

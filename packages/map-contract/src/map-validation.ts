@@ -1,7 +1,7 @@
 import { MapDocumentSchema, MapFlowDocumentSchemaV1, upgradeMapDocument, type MapDocument, type MapFlowDocument, type Vec2 } from "./map-document.js";
 import { isPositionValid, polygonArea, polygonSelfIntersects } from "./collision.js";
 
-export type MapValidationIssue = { code: string; path: string; message: string; mapId?: string; objectId?: string; polygonId?: string; portalId?: string };
+export type MapValidationIssue = { code: string; path: string; message: string; mapId?: string; objectId?: string; npcId?: string; polygonId?: string; portalId?: string };
 
 function polygonIssues(points: Vec2[], path: string, polygonId?: string, objectId?: string): MapValidationIssue[] {
   const issues: MapValidationIssue[] = [];
@@ -30,6 +30,13 @@ export function validateMapDocument(input: unknown): { success: true; document: 
     }
     if (object.kind === "sprite2d" && object.collider.type !== "none" && !object.navigationTransform) issues.push({ code: "MISSING_NAVIGATION_TRANSFORM", path: `objects.${index}.navigationTransform`, message: "Sprite có collider cần navigation transform.", objectId: object.id });
     if (object.collider.type === "polygon") issues.push(...polygonIssues(object.collider.points, `objects.${index}.collider.points`, undefined, object.id));
+  });
+  const npcIds = new Set<string>();
+  document.npcs.forEach((npc, index) => {
+    if (npcIds.has(npc.id)) issues.push({ code: "DUPLICATE_NPC_ID", path: `npcs.${index}.id`, message: "ID NPC phải duy nhất.", npcId: npc.id });
+    npcIds.add(npc.id);
+    if (bindingIds.has(npc.id)) issues.push({ code: "NPC_ID_CONFLICT", path: `npcs.${index}.id`, message: "ID NPC trùng binding cũ.", npcId: npc.id });
+    if (!isPositionValid(document, { x: npc.transform.position.x, z: npc.transform.position.z }, 0)) issues.push({ code: "INVALID_NPC_POSITION", path: `npcs.${index}.transform.position`, message: "NPC không nằm trong vùng hợp lệ.", npcId: npc.id });
   });
   document.navigation.walkablePolygons.forEach((polygon, index) => {
     if (polygonIds.has(polygon.id)) issues.push({ code: "DUPLICATE_POLYGON_ID", path: `navigation.walkablePolygons.${index}.id`, message: "ID vùng đi được phải duy nhất.", polygonId: polygon.id });

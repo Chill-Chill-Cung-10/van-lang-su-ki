@@ -1,20 +1,27 @@
 "use client";
 
-import { colliderFootprint, type MapDocument, type MapObject, type Vec2 } from "@van-lang/map-contract";
-import { ContactShadows, Html, useAnimations, useGLTF } from "@react-three/drei";
+import { colliderFootprint, type MapDocument, type MapNpc, type MapObject, type Vec2 } from "@van-lang/map-contract";
+import { ContactShadows, Html, TransformControls, useAnimations, useGLTF } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Component, Suspense, useEffect, useMemo, useRef } from "react";
 import type { PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "react";
 import { BufferGeometry, DoubleSide, Float32BufferAttribute, Group, MathUtils, Mesh, Plane, Raycaster, Shape, Vector2, Vector3 } from "three";
+import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
 import { dungeonNpcs } from "./vanlang-mock-data";
 
 type EditorOverlayConfig = {
   selectedPolygonId: string | null;
+  selectedEntryPointId?: string | null;
+  selectedPortalId?: string | null;
+  showAllPolygons?: boolean;
+  editablePolygons?: boolean;
   onPolygonSelect?: (polygonId: string) => void;
+  onEntryPointSelect?: (entryPointId: string) => void;
+  onPortalSelect?: (portalId: string) => void;
   onPointMove?: (polygonId: string, index: number, point: Vec2) => void;
   onPointInsert?: (polygonId: string, index: number, point: Vec2) => void;
 };
-type DungeonWorldProps = { mapDocument: MapDocument; playerPos: { x: number; y: number }; facing: number; isMoving: boolean; onSceneReady?: () => void; onSceneError?: () => void; editorOverlay?: EditorOverlayConfig };
+type DungeonWorldProps = { mapDocument: MapDocument; playerPos: { x: number; y: number }; facing: number; isMoving: boolean; onSceneReady?: () => void; onSceneError?: () => void; editorOverlay?: EditorOverlayConfig; selectedNpcId?: string | null; onNpcSelect?: (npcId: string) => void; onNpcMove?: (npcId: string, position: { x: number; y: number; z: number }) => void };
 const HERO_MODEL = "/models/vanlang-rebirth/hero.runtime.glb";
 const radians = (degrees: number) => degrees * Math.PI / 180;
 
@@ -59,6 +66,16 @@ function NavmeshSurface({ document }: { document: MapDocument }) {
 
 function NpcBeacon({ name, position, isBoss }: { name: string; position: { x: number; y: number; z: number }; isBoss: boolean }) {
   return <group position={[position.x, position.y, position.z]}><mesh position={[0, 0.12, 0]} castShadow><cylinderGeometry args={[0.09, 0.14, 0.24, 8]} /><meshStandardMaterial color={isBoss ? "#a73b29" : "#9d7435"} emissive={isBoss ? "#49140d" : "#493117"} /></mesh><mesh position={[0, 0.48, 0]} rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.14, 0.025, 10, 28]} /><meshBasicMaterial color={isBoss ? "#ff9b73" : "#f4cf83"} /></mesh><Html center position={[0, 0.76, 0]} distanceFactor={5.5} zIndexRange={[2, 0]}><span className={`dungeon-npc-label ${isBoss ? "is-boss" : ""}`} aria-hidden="true">{name}</span></Html></group>;
+}
+
+function RuntimeNpcModel({ npc, selected, onSelect, onMove }: { npc: MapNpc; selected: boolean; onSelect?: () => void; onMove?: (position: { x: number; y: number; z: number }) => void }) {
+  const loaded = useGLTF(npc.src);
+  const scene = useMemo(() => cloneSkeleton(loaded.scene), [loaded.scene]);
+  const group = useRef<Group>(null);
+  const content = <group ref={group} name={`npc-${npc.id}`} position={[npc.transform.position.x, npc.transform.position.y, npc.transform.position.z]} rotation={[radians(npc.transform.rotationDeg.x), radians(npc.transform.rotationDeg.y), radians(npc.transform.rotationDeg.z)]} scale={[npc.transform.scale.x, npc.transform.scale.y, npc.transform.scale.z]} onClick={(event) => { event.stopPropagation(); onSelect?.(); }}><primitive object={scene} /></group>;
+  return selected && onMove
+    ? <TransformControls mode="translate" onObjectChange={() => { const position = group.current?.position; if (position) onMove({ x: position.x, y: position.y, z: position.z }); }}>{content}</TransformControls>
+    : content;
 }
 
 function PlayerAvatar({ mapDocument, playerPos, facing, isMoving }: DungeonWorldProps) {
@@ -152,11 +169,33 @@ function OverlayPointHandle({ point, groundY, rootRef, label, midpoint = false, 
 
 function EditorOverlay({ document, config, rootRef }: { document: MapDocument; config: EditorOverlayConfig; rootRef: RefObject<Group | null> }) {
   const footprints = document.objects.map((object) => ({ id: object.id, footprint: colliderFootprint(object) })).filter((item) => item.footprint);
+  const spawn = document.navigation.spawn;
+  const polygons = config.showAllPolygons
+    ? document.navigation.walkablePolygons.filter((polygon) => polygon.enabled)
+    : document.navigation.walkablePolygons.filter((polygon) => polygon.enabled && polygon.id === config.selectedPolygonId);
   return <group name="map-editor-overlay">
-    {document.navigation.walkablePolygons.filter((polygon) => polygon.enabled).map((polygon) => <group key={polygon.id}>
+    <Html center position={[spawn.x, document.world.groundY + 0.22, spawn.z]} zIndexRange={[40, 31]}><div className="overlay-spawn-marker" role="img" aria-label="Spawn point">Spawn</div></Html>
+    <mesh name="spawn-point-marker" position={[spawn.x, document.world.groundY + 0.065, spawn.z]} rotation={[Math.PI / 2, 0, 0]} renderOrder={1002}><ringGeometry args={[0.16, 0.25, 32]} /><meshBasicMaterial color="#58e6ff" transparent opacity={0.95} side={DoubleSide} depthWrite={false} /></mesh>
+    {document.navigation.entryPoints.map((entryPoint) => {
+      const selected = entryPoint.id === config.selectedEntryPointId;
+      return <group key={entryPoint.id} position={[entryPoint.position.x, document.world.groundY + 0.075, entryPoint.position.z]} rotation={[0, entryPoint.facingDeg * Math.PI / 180, 0]} onClick={(event) => { event.stopPropagation(); config.onEntryPointSelect?.(entryPoint.id); }}>
+        <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={1003}><ringGeometry args={[0.18, selected ? 0.34 : 0.29, 32]} /><meshBasicMaterial color={selected ? "#fff2a8" : "#58e6ff"} transparent opacity={0.98} side={DoubleSide} depthWrite={false} /></mesh>
+        <mesh position={[0, 0, 0.34]} rotation={[Math.PI / 2, 0, 0]} renderOrder={1003}><coneGeometry args={[0.12, 0.28, 3]} /><meshBasicMaterial color={selected ? "#fff2a8" : "#58e6ff"} transparent opacity={0.98} depthWrite={false} /></mesh>
+        <Html center position={[0, 0.28, 0]} zIndexRange={[40, 31]}><button type="button" className="overlay-navigation-label" aria-label={`Entrypoint ${entryPoint.id}`}>{entryPoint.id}</button></Html>
+      </group>;
+    })}
+    {document.portals.filter((portal) => portal.enabled).map((portal) => {
+      const selected = portal.id === config.selectedPortalId;
+      return <group key={portal.id} position={[portal.trigger.center.x, document.world.groundY + 0.06, portal.trigger.center.z]} onClick={(event) => { event.stopPropagation(); config.onPortalSelect?.(portal.id); }}>
+        <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={1003}><circleGeometry args={[portal.trigger.radius, 48]} /><meshBasicMaterial color="#ad58ff" transparent opacity={selected ? 0.48 : 0.28} side={DoubleSide} depthWrite={false} /></mesh>
+        <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={1004}><ringGeometry args={[Math.max(0.04, portal.trigger.radius - 0.06), portal.trigger.radius, 48]} /><meshBasicMaterial color={selected ? "#fff2a8" : "#d9a7ff"} transparent opacity={0.98} side={DoubleSide} depthWrite={false} /></mesh>
+        <Html center position={[0, 0.28, 0]} zIndexRange={[40, 31]}><button type="button" className="overlay-navigation-label is-portal" aria-label={`Portal ${portal.id}`}>{portal.id}</button></Html>
+      </group>;
+    })}
+    {polygons.map((polygon) => <group key={polygon.id}>
       <OverlayPolygon points={polygon.points} color={polygon.id === config.selectedPolygonId ? "#ffc55b" : "#48e692"} groundY={document.world.groundY} onSelect={() => config.onPolygonSelect?.(polygon.id)} />
-      {polygon.points.map((point, index) => <OverlayPointHandle key={index} point={point} groundY={document.world.groundY} rootRef={rootRef} label={`Di chuyển điểm ${index + 1} của ${polygon.id}`} onSelect={() => config.onPolygonSelect?.(polygon.id)} onMove={(next) => config.onPointMove?.(polygon.id, index, next)} />)}
-      {polygon.id === config.selectedPolygonId ? polygon.points.map((point, index) => {
+      {config.editablePolygons ? polygon.points.map((point, index) => <OverlayPointHandle key={index} point={point} groundY={document.world.groundY} rootRef={rootRef} label={`Di chuyển điểm ${index + 1} của ${polygon.id}`} onSelect={() => config.onPolygonSelect?.(polygon.id)} onMove={(next) => config.onPointMove?.(polygon.id, index, next)} />) : null}
+      {config.editablePolygons && polygon.id === config.selectedPolygonId ? polygon.points.map((point, index) => {
         const next = polygon.points[(index + 1) % polygon.points.length];
         const midpoint = { x: (point.x + next.x) / 2, z: (point.z + next.z) / 2 };
         return <OverlayPointHandle key={`insert-${index}`} point={midpoint} groundY={document.world.groundY} rootRef={rootRef} label={`Chèn điểm sau điểm ${index + 1} của ${polygon.id}`} midpoint onSelect={() => config.onPolygonSelect?.(polygon.id)} onInsert={() => config.onPointInsert?.(polygon.id, index + 1, midpoint)} />;
@@ -173,7 +212,7 @@ function RebirthArena(props: DungeonWorldProps) {
   const root = document.world.rootTransform;
   const rootRef = useRef<Group>(null);
   const models = document.objects.filter((object): object is Extract<MapObject, { kind: "model3d" }> => object.kind === "model3d" && object.enabled).sort((a, b) => a.renderOrder - b.renderOrder || a.id.localeCompare(b.id));
-  return <><ambientLight intensity={1.8} color="#f7e1ba" /><hemisphereLight intensity={1.5} color="#fff0d0" groundColor="#2b1d16" /><directionalLight position={[5, 10, 7]} intensity={2.6} color="#ffe0a3" castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} /><CameraRig document={document} /><group ref={rootRef} position={[root.position.x, root.position.y, root.position.z]} rotation={[radians(root.rotationDeg.x), radians(root.rotationDeg.y), radians(root.rotationDeg.z)]} scale={[root.scale.x, root.scale.y, root.scale.z]}><NavmeshSurface document={document} /><Suspense fallback={null}>{models.filter((object) => !object.binding).map((object) => <MapModel key={object.id} object={object} />)}{models.filter((object) => object.binding).map((object) => { const npc = dungeonNpcs.find((item) => item.id === object.binding?.entityId); return npc ? <NpcBeacon key={object.id} name={npc.name} isBoss={npc.role === "boss"} position={object.transform3d.position} /> : null; })}<PlayerAvatar {...props} /><SceneReady onReady={props.onSceneReady} /></Suspense>{props.editorOverlay ? <EditorOverlay document={document} config={props.editorOverlay} rootRef={rootRef} /> : null}<ContactShadows position={[0, document.world.groundY + 0.01, 0]} opacity={0.32} scale={11} blur={2.2} far={4} /></group></>;
+  return <><ambientLight intensity={1.8} color="#f7e1ba" /><hemisphereLight intensity={1.5} color="#fff0d0" groundColor="#2b1d16" /><directionalLight position={[5, 10, 7]} intensity={2.6} color="#ffe0a3" castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} /><CameraRig document={document} /><group ref={rootRef} position={[root.position.x, root.position.y, root.position.z]} rotation={[radians(root.rotationDeg.x), radians(root.rotationDeg.y), radians(root.rotationDeg.z)]} scale={[root.scale.x, root.scale.y, root.scale.z]}><NavmeshSurface document={document} /><Suspense fallback={null}>{models.filter((object) => !object.binding).map((object) => <MapModel key={object.id} object={object} />)}{models.filter((object) => object.binding).map((object) => { const npc = dungeonNpcs.find((item) => item.id === object.binding?.entityId); return npc ? <NpcBeacon key={object.id} name={npc.name} isBoss={npc.role === "boss"} position={object.transform3d.position} /> : null; })}{document.npcs.map((npc) => <RuntimeNpcModel key={npc.id} npc={npc} selected={props.selectedNpcId === npc.id} onSelect={props.onNpcSelect ? () => props.onNpcSelect?.(npc.id) : undefined} onMove={props.onNpcMove ? (position) => props.onNpcMove?.(npc.id, position) : undefined} />)}<PlayerAvatar {...props} /><SceneReady onReady={props.onSceneReady} /></Suspense>{props.editorOverlay ? <EditorOverlay document={document} config={props.editorOverlay} rootRef={rootRef} /> : null}<ContactShadows position={[0, document.world.groundY + 0.01, 0]} opacity={0.32} scale={11} blur={2.2} far={4} /></group></>;
 }
 
 export function VanlangDungeonWorld(props: DungeonWorldProps) {

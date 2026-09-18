@@ -71,6 +71,35 @@ test("navmesh follows the three marked arena routes", () => {
   expect(Math.hypot(projected.x - offRoute.x, projected.y - offRoute.y)).toBeGreaterThan(1.5);
 });
 
+test("imported NPC model opens its dialogue by Space and touch", async ({ page }) => {
+  await mkdir(evidenceDir, { recursive: true });
+  const fixture = JSON.parse(await readFile("packages/map-contract/maps/vanlang.v1.json", "utf8"));
+  const document = upgradeMapDocument(fixture);
+  const position = { x: 2, y: document.world.groundY, z: 0 };
+  document.npcs = [{
+    id: "historian", name: "Sử quan", dialogue: "Hãy lắng nghe chuyện xưa.",
+    src: "/models/vanlang-rebirth/hero.runtime.glb",
+    transform: { position, rotationDeg: { x: 0, y: 0, z: 0 }, scale: { x: 0.6, y: 0.6, z: 0.6 } },
+  }];
+  await page.route("**/api/maps/vanlang", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ mapId: "vanlang", revision: 3, etag: '"vanlang:3:npc"', activatedAt: new Date(0).toISOString(), document }) }));
+
+  const email = `npc-runtime-${Date.now()}@local.test`;
+  await registerAndLogin(page, "Người thử NPC", email);
+  await finishPrologue(page);
+  await page.evaluate((account) => localStorage.setItem(`vanlang-rebirth-seen:${account}`, "true"), email);
+  await enterDungeon(page);
+  await restorePlayerPosition(page, { x: position.x, y: position.z });
+  await expect(page.getByText("Trò chuyện với Sử quan")).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("dialog", { name: "Sử quan" })).toBeVisible();
+  await expect(page.getByText("Hãy lắng nghe chuyện xưa.")).toBeVisible();
+  await page.getByRole("button", { name: "Đóng" }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Tương tác với NPC" }).click();
+  await expect(page.getByRole("dialog", { name: "Sử quan" })).toBeVisible();
+  await page.screenshot({ path: `${evidenceDir}/npc-runtime-space-touch-pass.png`, fullPage: true });
+});
+
 test("Văn Lang rebirth arena end-to-end", async ({ browser, page }) => {
   await mkdir(evidenceDir, { recursive: true });
   const runId = Date.now();
@@ -330,6 +359,7 @@ test("portal transition commits after target ready, persists refresh, and rolls 
   await enterDungeon(page);
   await expect(page.getByRole("button", { name: "Bước vào ký ức" })).toBeVisible();
   await page.getByRole("button", { name: "Bước vào ký ức" }).click();
+  await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem("vanlang-game-mock-v4") ?? "{}").playerPos)).toEqual({ x: source.navigation.spawn.x, y: source.navigation.spawn.z });
   await page.keyboard.press("KeyD");
   await expect(page.getByText("Đang tải map đích… Input đã khóa.")).toBeVisible();
   await page.keyboard.press("KeyD");

@@ -6,6 +6,8 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65_535).default(4000),
   FRONTEND_URL: z.string().url().default("http://localhost:3000"),
   MAP_EDITOR_WRITE_ENABLED: z.string().default("false").transform((value) => value === "true"),
+  ASSET_STORAGE_DIR: z.string().default(".runtime/assets"),
+  ASSET_UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(67_108_864),
   DATABASE_URL: z.string().url(),
   DEMO_PLAYER_ID: z.string().uuid().default("00000000-0000-4000-8000-000000000001"),
   OPENAI_API_KEY: z.string().optional(),

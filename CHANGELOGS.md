@@ -6,7 +6,12 @@ Tài liệu này ghi nhận các thay đổi đáng chú ý theo từng phiên b
 
 ### Added
 
+- Đồng bộ vùng đang chọn giữa viewport 2D, góc nhìn 3D và Overlay; hiển thị entrypoint cùng portal point trực tiếp trong cả hai chế độ 3D.
+- Cho phép quản lý entrypoint ngay trong tab Map, đặt nhanh tọa độ/hướng từ scene object đang chọn và preview nhân vật tại đúng điểm mà portal Map Flow sẽ teleport tới.
+- Thêm vertical slice import NPC GLB: backend validate/tối ưu và lưu asset theo SHA-256, Map Document V3 tương thích V1/V2, editor đặt/chọn/dịch chuyển NPC, runtime render model thật và hội thoại bằng Space hoặc cảm ứng.
 - Thêm Map Flow PR 1: clone map thành revision 1, graph node/portal/entry point có snapshot revision, Save Flow PostgreSQL atomic với ETag/validation, và runtime transition có preload, rollback, cooldown cùng persistence qua refresh.
+- Hoàn thiện luồng tạo map trong Map Editor: nút tạo map dễ thấy, chọn map mẫu, cấu hình entrypoint/portal theo từng bước, đồng bộ portal khi đổi ID entrypoint và sửa thao tác kéo node Map Flow.
+- Đồng bộ Save của Map tab với snapshot Map Flow, tự cập nhật portal khi đổi ID entrypoint và thêm portal point/trigger có thể kéo trực tiếp trên viewport 2D.
 - Bổ sung viewport Overlay 3D cho walkable/collider theo transform runtime, kéo/chọn/chèn vector point trực tiếp đồng bộ với viewport 2D, tạo nhanh vùng chữ nhật, nhập tọa độ X/Z thủ công và nút Lưu map luôn hiện trên header.
 - Các script migration và seed backend tự nạp cấu hình local từ `.env.local`.
 - Thêm Map Editor Mode end-to-end cho map document dùng chung: asset/scene inspector, transform 2D/3D, walkable polygon, collider overlay, dirty state và save revision có ETag.
@@ -48,6 +53,9 @@ Tài liệu này ghi nhận các thay đổi đáng chú ý theo từng phiên b
 
 ### Fixed
 
+- Tự sửa portal trigger ngoài navmesh khi lưu, hiển thị marker spawn trong viewport 2D và overlay 3D, đồng thời bổ sung kiểm thử browser cho spawn và dịch chuyển portal tới entry point.
+- Tự động đưa entry point nằm sát mép hoặc ngoài navmesh về vị trí hợp lệ gần nhất khi lưu map, đồng thời cập nhật lại tọa độ đã lưu trên giao diện.
+- Sửa Save Flow khi map active đã có revision mới hơn revision mà flow đang pin; backend cấp revision kế tiếp từ revision lớn nhất nên không còn lỗi trùng khóa và rollback toàn bộ thao tác lưu.
 - Chặn trigger portal overlap và khóa đồng bộ transition in-flight để tránh double dispatch, bounce loop hoặc mất map/vị trí nguồn khi tải map đích lỗi hay refresh giữa chừng.
 - Harden Map Editor/runtime trước dữ liệu map lỗi, save đồng thời/thất bại, dirty navigation, polygon không hợp lệ, coordinate drift khi resize và collision tunneling/recovery với collider transform hoặc chồng lấn.
 - Xoay phép chiếu điều khiển theo camera đấu trường để W/S đối nhau 180°, A/D lệch đúng ±90° và hướng mặt nhân vật khớp với chuyển động.

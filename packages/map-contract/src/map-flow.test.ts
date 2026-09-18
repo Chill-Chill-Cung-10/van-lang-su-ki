@@ -8,10 +8,36 @@ const fixture = JSON.parse(await readFile(new URL("../maps/vanlang.v1.json", imp
 test("upgrades V1 without mutating the fixture", () => {
   const before = canonicalStringify(fixture);
   const upgraded = upgradeMapDocument(fixture);
-  assert.equal(upgraded.schemaVersion, 2);
+  assert.equal(upgraded.schemaVersion, 3);
+  assert.deepEqual(upgraded.npcs, []);
   assert.deepEqual(upgraded.portals, []);
   assert.deepEqual(upgraded.navigation.entryPoints, [{ id: "default", position: fixture.navigation.spawn, facingDeg: 0 }]);
   assert.equal(canonicalStringify(fixture), before);
+});
+
+test("validates V3 NPC data and preserves legacy compatibility", () => {
+  const document = upgradeMapDocument(fixture);
+  const npc = {
+    id: "historian",
+    name: "Sử quan",
+    src: "/runtime-assets/glb/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.glb",
+    transform: { position: { x: document.navigation.spawn.x, y: document.world.groundY, z: document.navigation.spawn.z }, rotationDeg: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+    dialogue: "Hãy lắng nghe chuyện xưa.",
+  };
+  document.npcs = [npc];
+  const valid = validateMapDocument(document);
+  assert.equal(valid.success, true);
+  if (valid.success) assert.deepEqual(valid.document.npcs[0], npc);
+
+  document.npcs.push({ ...npc });
+  const duplicate = validateMapDocument(document);
+  assert.equal(duplicate.success, false);
+  if (!duplicate.success) assert.equal(duplicate.issues.some((issue) => issue.code === "DUPLICATE_NPC_ID"), true);
+
+  document.npcs = [{ ...npc, id: "outside", transform: { ...npc.transform, position: { x: 9_000, y: 0, z: 9_000 } } }];
+  const outside = validateMapDocument(document);
+  assert.equal(outside.success, false);
+  if (!outside.success) assert.equal(outside.issues.some((issue) => issue.code === "INVALID_NPC_POSITION"), true);
 });
 
 test("validates duplicate portal IDs and invalid trigger or entry positions", () => {

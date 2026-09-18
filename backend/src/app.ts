@@ -6,6 +6,7 @@ import { progressRoutes } from "./routes/progress.js";
 import { tutorRoutes } from "./routes/tutor.js";
 import { mapsRoutes } from "./routes/maps.js";
 import { mapFlowsRoutes } from "./routes/map-flows.js";
+import { assetsRoutes } from "./routes/assets.js";
 
 export function buildApp() {
   const env = getServerEnv();
@@ -22,6 +23,7 @@ export function buildApp() {
   app.register(tutorRoutes);
   app.register(mapsRoutes);
   app.register(mapFlowsRoutes);
+  app.register(assetsRoutes);
 
   return app;
 }

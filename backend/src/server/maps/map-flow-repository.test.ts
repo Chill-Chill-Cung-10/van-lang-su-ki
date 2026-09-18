@@ -5,7 +5,7 @@ import fixture from "../../../../packages/map-contract/maps/vanlang.v1.json" wit
 import { getPool } from "../db/index.js";
 import { createDatabaseMapFlowsRepository } from "./map-flow-repository.js";
 
-test("database Save Flow rolls back every revision when a later transaction step fails", { skip: !process.env.DATABASE_URL }, async () => {
+test("database Save Flow is atomic and allocates after active revisions ahead of the pinned flow", { skip: !process.env.DATABASE_URL }, async () => {
   const suffix = `${process.pid}-${Date.now()}`;
   const flowId = `atomic-${suffix}`;
   const mapIds = [`atomic-a-${suffix}`, `atomic-b-${suffix}`];
@@ -38,6 +38,17 @@ test("database Save Flow rolls back every revision when a later transaction step
     const revisionCounts = await client.query<{ map_id: string; count: string }>("SELECT map_id, COUNT(*)::text AS count FROM map_revisions WHERE map_id = ANY($1::text[]) GROUP BY map_id ORDER BY map_id", [mapIds]);
     assert.deepEqual(revisionCounts.rows.map((row) => [row.map_id, row.count]), mapIds.map((mapId) => [mapId, "1"]));
     assert.equal((await client.query<{ count: string }>("SELECT COUNT(*)::text AS count FROM map_flow_revisions WHERE flow_id = $1", [flowId])).rows[0].count, "1");
+
+    const newerActive = { ...maps[0]!.document, metadata: { ...maps[0]!.document.metadata, name: `${mapIds[0]} active revision` } };
+    const activeRevision = await client.query<{ id: string }>("INSERT INTO map_revisions(map_id, revision, schema_version, document, checksum, created_by) VALUES ($1, 2, 3, $2::jsonb, 'active-checksum', 'atomic-test') RETURNING id", [mapIds[0], canonicalStringify(newerActive)]);
+    await client.query("UPDATE maps SET active_revision_id = $2 WHERE map_id = $1", [mapIds[0], activeRevision.rows[0].id]);
+
+    const saved = await baseRepository.saveFlow(flowId, flow.etag, {
+      document: { schemaVersion: 1, flowId, nodes: flow.document.nodes.map(({ mapId, position }) => ({ mapId, position })) },
+      maps: [{ mapId: maps[0]!.mapId, expectedEtag: maps[0]!.etag, document: { ...maps[0]!.document, metadata: { ...maps[0]!.document.metadata, name: `${mapIds[0]} flow edit` } } }],
+    });
+    assert.equal(saved.maps[0].revision, 3);
+    assert.equal(saved.flow.document.nodes.find((node) => node.mapId === mapIds[0])?.mapRevision, 3);
   } finally {
     await client.query("BEGIN");
     await client.query("UPDATE map_flows SET active_revision_id = NULL WHERE flow_id = $1", [flowId]);

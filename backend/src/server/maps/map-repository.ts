@@ -85,7 +85,7 @@ export const databaseMapsRepository: MapsRepository = {
       const nextRevision = row.revision + 1;
       const inserted = await client.query<{ id: string; created_at: Date }>(
         `INSERT INTO map_revisions(map_id, revision, schema_version, document, checksum, created_by)
-         VALUES ($1, $2, 2, $3::jsonb, $4, 'local-editor') RETURNING id, created_at`,
+         VALUES ($1, $2, 3, $3::jsonb, $4, 'local-editor') RETURNING id, created_at`,
         [mapId, nextRevision, serialized, checksum],
       );
       await client.query(

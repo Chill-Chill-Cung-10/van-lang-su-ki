@@ -1,6 +1,6 @@
 "use client";
 
-import type { DirectedPortal, MapDocument } from "@van-lang/map-contract";
+import type { DirectedPortal, MapDocument, MapNpc } from "@van-lang/map-contract";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VanlangCinematicLoader } from "./vanlang-cinematic-loader";
@@ -34,6 +34,7 @@ type DialogState =
   | { kind: "timekeeper" }
   | { kind: "quest"; questId: string }
   | { kind: "boss"; questId: string }
+  | { kind: "generic"; npcId: string }
   | null;
 
 type ProgressState = {
@@ -413,7 +414,11 @@ export default function VanlangGameShell({
       mentor: dungeonNpcs.find((npc) => npc.role === "mentor" && near(npc)) ?? null,
     };
   }, [mapDocument, npcBoss, npcGuide, npcTimekeeper, state.playerPos.x, state.playerPos.y]);
-  const nearbyNpcForPrompt = nearbyNpc.timekeeper ?? nearbyNpc.guide ?? nearbyNpc.mentor ?? nearbyNpc.boss;
+  const nearbyGenericNpc = useMemo(() => mapDocument?.npcs
+    .map((npc) => ({ npc, distance: Math.hypot(npc.transform.position.x - state.playerPos.x, npc.transform.position.z - state.playerPos.y) }))
+    .filter((item) => item.distance <= 1.25)
+    .sort((a, b) => a.distance - b.distance || a.npc.id.localeCompare(b.npc.id))[0]?.npc ?? null, [mapDocument, state.playerPos.x, state.playerPos.y]);
+  const nearbyNpcForPrompt: Npc | MapNpc | null = nearbyNpc.timekeeper ?? nearbyNpc.guide ?? nearbyNpc.mentor ?? nearbyNpc.boss ?? nearbyGenericNpc;
 
   const interact = useCallback(() => {
     if (state.screen !== "dungeon") return;
@@ -442,8 +447,13 @@ export default function VanlangGameShell({
       setSelectedAnswer(null);
       setAnswerResult(null);
       playTone(760, 60);
+      return;
     }
-  }, [bossQuest, guideQuest, nearbyNpc.boss, nearbyNpc.guide, nearbyNpc.timekeeper, nearbyNpc.mentor, playTone, state.screen]);
+    if (nearbyGenericNpc) {
+      setDialog({ kind: "generic", npcId: nearbyGenericNpc.id });
+      playTone(710, 60);
+    }
+  }, [bossQuest, guideQuest, nearbyGenericNpc, nearbyNpc.boss, nearbyNpc.guide, nearbyNpc.timekeeper, nearbyNpc.mentor, playTone, state.screen]);
 
   const enterVanLang = useCallback(() => {
     setIsVanLangLoading(true);

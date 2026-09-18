@@ -25,6 +25,14 @@ async function parseResponse(response: Response) {
   return body;
 }
 
+export type ImportedGlb = { assetId: string; checksum: string; src: string; originalBytes: number; runtimeBytes: number; reused: boolean };
+
+export async function importGlb(file: File): Promise<ImportedGlb> {
+  const form = new FormData();
+  form.set("file", file);
+  return parseResponse(await fetch(`${API_BASE_URL}/api/admin/assets/glb`, { method: "POST", body: form })) as Promise<ImportedGlb>;
+}
+
 export async function listMaps(): Promise<MapSummary[]> {
   return MapListResponseSchema.parse(await parseResponse(await fetch(`${API_BASE_URL}/api/maps`, { cache: "no-store" }))).maps;
 }

@@ -22,6 +22,7 @@ export type DungeonDialogState =
   | { kind: "timekeeper" }
   | { kind: "quest"; questId: string }
   | { kind: "boss"; questId: string }
+  | { kind: "generic"; npcId: string }
   | null;
 
 function MapSprites({ document, layer }: { document: MapDocument; layer: "underlay2d" | "overlay2d" }) {
@@ -48,7 +49,7 @@ type DungeonScreenProps = {
   facing: number;
   isMoving: boolean;
   character: PlayerCharacter;
-  nearbyNpc: DnNpc | null;
+  nearbyNpc: Pick<DnNpc, "id" | "name"> | null;
   rebirthRequired: boolean;
   rebirthText: string;
   dialog: DungeonDialogState;
@@ -121,7 +122,9 @@ export function VanlangDungeonScreen(props: DungeonScreenProps) {
   }, [props.rebirthRequired]);
 
   const closeDrawer = () => props.onOpenDrawer(null);
-  const dialogNpc = props.dialog?.kind === "quest" ? guide : props.dialog?.kind === "boss" ? boss : timekeeper;
+  const genericNpcId = props.dialog?.kind === "generic" ? props.dialog.npcId : null;
+  const genericNpc = genericNpcId ? props.mapDocument.npcs.find((npc) => npc.id === genericNpcId) : null;
+  const dialogNpc = props.dialog?.kind === "quest" ? guide : props.dialog?.kind === "boss" ? boss : props.dialog?.kind === "generic" ? genericNpc : timekeeper;
   const dialogText = dialogNpc?.dialogue ?? "";
   const dialogTypingDone = dialogChars >= dialogText.length;
 

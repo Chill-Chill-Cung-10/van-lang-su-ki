@@ -9,12 +9,13 @@ const corsHeaders = {
   "access-control-allow-headers": "Content-Type, If-Match",
 };
 
-async function mockMapApi(page: Page, options: { delayFirstSave?: boolean; failFirstSave?: boolean; secondMap?: boolean } = {}) {
-  let active = JSON.parse(await readFile("packages/map-contract/maps/vanlang.v1.json", "utf8")) as MapDocument;
+async function mockMapApi(page: Page, options: { delayFirstSave?: boolean; failFirstSave?: boolean; secondMap?: boolean; portal?: boolean } = {}) {
+  let active = upgradeMapDocument(JSON.parse(await readFile("packages/map-contract/maps/vanlang.v1.json", "utf8")));
+  if (options.portal) active.portals.push({ id: "portal-home", enabled: true, trigger: { type: "circle", center: { ...active.navigation.spawn }, radius: 0.8 }, target: { mapId: "vanlang", entryPointId: "default" } });
   let revision = 1;
   let flowRevision = 1;
   let flowNodes = [{ mapId: "vanlang", mapRevision: 1, position: { x: 0.3, y: 0.5 } }];
-  const flowMaps = new Map<string, MapDocument>([["vanlang", upgradeMapDocument(active)]]);
+  const flowMaps = new Map<string, MapDocument>([["vanlang", structuredClone(active)]]);
   let saveCount = 0;
   let releaseSave = () => {};
   const saveGate = new Promise<void>((resolve) => { releaseSave = resolve; });
@@ -32,11 +33,16 @@ async function mockMapApi(page: Page, options: { delayFirstSave?: boolean; failF
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (request.method() === "OPTIONS") return fulfill(route, 204);
+    if (request.method() === "POST" && path === "/api/admin/assets/glb") return fulfill(route, 201, {
+      assetId: "a".repeat(64), checksum: "a".repeat(64), src: "/models/vanlang-rebirth/hero.runtime.glb",
+      originalBytes: 1024, runtimeBytes: 900, reused: false, summary: { scenes: 1, meshes: 1, skins: 1, morphTargets: 0, animations: ["Idle"] },
+    });
     if (request.method() === "GET" && path === "/api/map-flows/vanlang") return fulfill(route, 200, { flowId: "vanlang", revision: flowRevision, etag: `"vanlang:${flowRevision}:flow"`, activatedAt: new Date(0).toISOString(), document: { schemaVersion: 1, flowId: "vanlang", nodes: flowNodes } });
     if (request.method() === "GET" && path.startsWith("/api/map-flows/vanlang/maps/")) {
       const mapId = path.split("/").at(-1)!;
       const document = flowMaps.get(mapId);
-      return document ? fulfill(route, 200, { mapId, revision: flowNodes.find((node) => node.mapId === mapId)?.mapRevision ?? 1, etag: `"${mapId}:1:map"`, activatedAt: new Date(0).toISOString(), document }) : fulfill(route, 404, { code: "MAP_NOT_FOUND" });
+      const mapRevision = flowNodes.find((node) => node.mapId === mapId)?.mapRevision ?? 1;
+      return document ? fulfill(route, 200, { mapId, revision: mapRevision, etag: `"${mapId}:${mapRevision}:map"`, activatedAt: new Date(0).toISOString(), document }) : fulfill(route, 404, { code: "MAP_NOT_FOUND" });
     }
     if (request.method() === "POST" && path === "/api/admin/map-flows/vanlang/maps") {
       const input = request.postDataJSON() as { sourceMapId: string; mapId: string; metadata: MapDocument["metadata"]; nodePosition: { x: number; y: number } };
@@ -49,12 +55,19 @@ async function mockMapApi(page: Page, options: { delayFirstSave?: boolean; failF
     }
     if (request.method() === "PUT" && path === "/api/admin/map-flows/vanlang") {
       const input = request.postDataJSON() as { document: { nodes: Array<{ mapId: string; position: { x: number; y: number } }> }; maps: Array<{ mapId: string; document: MapDocument }> };
+      saveCount += 1;
+      if (options.delayFirstSave && saveCount === 1) await saveGate;
+      if (options.failFirstSave && saveCount === 1) return fulfill(route, 503, { code: "MAP_SAVE_FAILED", message: "Database unavailable" });
       const invalid = input.maps.flatMap((item) => item.document.portals).some((portal) => Math.abs(portal.trigger.center.x) > 100 || Math.abs(portal.trigger.center.z) > 100);
       if (invalid) return fulfill(route, 422, { code: "MAP_FLOW_INVALID", message: "Trigger portal ngoài navmesh" });
-      for (const item of input.maps) flowMaps.set(item.mapId, item.document);
+      for (const item of input.maps) {
+        flowMaps.set(item.mapId, item.document);
+        if (item.mapId === "vanlang") active = item.document;
+      }
       flowNodes = input.document.nodes.map((node) => ({ ...node, mapRevision: (flowNodes.find((item) => item.mapId === node.mapId)?.mapRevision ?? 1) + Number(input.maps.some((item) => item.mapId === node.mapId)) }));
+      revision = flowNodes.find((node) => node.mapId === "vanlang")?.mapRevision ?? revision;
       flowRevision += 1;
-      return fulfill(route, 200, { flow: { flowId: "vanlang", revision: flowRevision, etag: `"vanlang:${flowRevision}:flow"`, activatedAt: new Date(0).toISOString(), document: { schemaVersion: 1, flowId: "vanlang", nodes: flowNodes } }, maps: input.maps.map((item) => ({ mapId: item.mapId, revision: flowNodes.find((node) => node.mapId === item.mapId)!.mapRevision, etag: `"${item.mapId}:next"`, activatedAt: new Date(0).toISOString(), document: item.document })) });
+      return fulfill(route, 200, { flow: { flowId: "vanlang", revision: flowRevision, etag: `"vanlang:${flowRevision}:flow"`, activatedAt: new Date(0).toISOString(), document: { schemaVersion: 1, flowId: "vanlang", nodes: flowNodes } }, maps: input.maps.map((item) => { const mapRevision = flowNodes.find((node) => node.mapId === item.mapId)!.mapRevision; return { mapId: item.mapId, revision: mapRevision, etag: `"${item.mapId}:${mapRevision}:next"`, activatedAt: new Date(0).toISOString(), document: item.document }; }) });
     }
     if (request.method() === "GET" && path === "/api/maps") {
       const maps = [{
@@ -88,12 +101,89 @@ async function mockMapApi(page: Page, options: { delayFirstSave?: boolean; failF
 
   return {
     active: () => active,
+    flowMap: (mapId: string) => flowMaps.get(mapId),
     releaseSave,
     revision: () => revision,
     saveCount: () => saveCount,
   };
 }
 
+test("imports an NPC, saves and reloads its dialogue and transform", async ({ page }) => {
+  await mkdir(evidenceDir, { recursive: true });
+  const api = await mockMapApi(page);
+  await page.goto("/admin/maps");
+  const panel = page.getByText("NPC GLB").locator("..");
+  await panel.getByLabel("NPC GLB").setInputFiles("frontend/public/models/vanlang-rebirth/hero.runtime.glb");
+  await panel.getByLabel("NPC ID").fill("historian");
+  await panel.getByLabel("Tên").fill("Sử quan");
+  await panel.getByLabel("Hội thoại").fill("Hãy lắng nghe chuyện xưa.");
+  await panel.getByRole("button", { name: "Import và thêm NPC" }).click();
+  await expect(page.getByText(/Đã import và thêm NPC Sử quan/)).toBeVisible();
+  await expect(page.getByLabel("Map viewport 3D")).toBeVisible();
+
+  const inspector = page.getByText("NPC", { exact: true }).last().locator("..");
+  await inspector.getByLabel("Position Y").fill("0.75");
+  await inspector.getByLabel("Position X").fill("0.25");
+  await page.getByRole("button", { name: "Lưu map" }).click();
+  await expect(page.getByText(/Đã lưu map r2 và đồng bộ Map Flow r2/)).toBeVisible();
+  expect(api.active().npcs[0]).toMatchObject({ id: "historian", name: "Sử quan", dialogue: "Hãy lắng nghe chuyện xưa.", transform: { position: { x: 0.25, y: 0.75 } } });
+
+  await page.reload();
+  await expect(page.getByText("NPC GLB")).toBeVisible();
+  expect(api.active().npcs[0].transform.position).toMatchObject({ x: 0.25, y: 0.75 });
+  await page.screenshot({ path: `${evidenceDir}/npc-glb-import-save-reload-pass.png`, fullPage: true });
+});
+
+test("portal point and entrypoint stay synchronized between Map and Map Flow", async ({ page }) => {
+  await mkdir(evidenceDir, { recursive: true });
+  const api = await mockMapApi(page, { portal: true });
+  await page.goto("/admin/maps");
+  await expect(page.getByRole("button", { name: "portal-home → vanlang/default" })).toBeVisible();
+  await expect(page.locator(".map-viewport .portal-trigger.selected .portal-handle")).toBeVisible();
+
+  const handle = page.locator(".map-viewport .portal-trigger.selected .portal-handle");
+  const bounds = await handle.boundingBox();
+  if (!bounds) throw new Error("Portal handle is not visible");
+  const initialX = Number(await page.getByLabel("Portal X").inputValue());
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width / 2 + 32, bounds.y + bounds.height / 2, { steps: 4 });
+  await page.mouse.up();
+  const movedX = Number(await page.getByLabel("Portal X").inputValue());
+  expect(movedX).toBeGreaterThan(initialX);
+
+  await page.getByLabel("ID dùng trong Map Flow").fill("arrival");
+  await page.getByRole("button", { name: "Lưu map" }).click();
+  await expect(page.getByText(/Đã lưu map r2 và đồng bộ Map Flow r2/)).toBeVisible();
+  expect(api.saveCount()).toBe(1);
+  expect(api.revision()).toBe(2);
+  expect(api.flowMap("vanlang")?.portals[0]).toMatchObject({ trigger: { center: { x: movedX } }, target: { mapId: "vanlang", entryPointId: "arrival" } });
+
+  await page.getByRole("button", { name: "Map Flow", exact: true }).click();
+  await page.getByLabel("Portal", { exact: true }).selectOption("portal-home");
+  await expect(page.getByLabel("Trigger X")).toHaveValue(String(movedX));
+  await expect(page.getByLabel("Entrypoint đích")).toHaveValue("arrival");
+  await page.screenshot({ path: `${evidenceDir}/map-portal-entrypoint-sync-pass.png`, fullPage: true });
+});
+
+test("spawn markers stay visible and invalid portal trigger is repaired before save", async ({ page }) => {
+  await mkdir(evidenceDir, { recursive: true });
+  const api = await mockMapApi(page, { portal: true });
+  await page.goto("/admin/maps");
+
+  await expect(page.getByRole("img", { name: "Spawn point" })).toBeVisible();
+  await page.getByLabel("Portal X").fill("8.8");
+  await page.getByLabel("Portal Z").fill("2.1");
+  await page.getByRole("button", { name: "Lưu map" }).click();
+  await expect(page.getByText(/Đã tự đưa portal portal-home vào vị trí hợp lệ gần nhất/)).toBeVisible();
+
+  const saved = api.flowMap("vanlang");
+  expect(saved).not.toBeNull();
+  expect(isPositionValid(saved!, saved!.portals[0].trigger.center)).toBe(true);
+  await page.getByRole("button", { name: "Overlay vùng" }).click();
+  await expect(page.getByRole("img", { name: "Spawn point" })).toBeVisible({ timeout: 30_000 });
+  await page.screenshot({ path: `${evidenceDir}/map-spawn-portal-repair-pass.png`, fullPage: true });
+});
 test("editor loads, saves atomically, and shows validation failure", async ({ page }) => {
   await mkdir(evidenceDir, { recursive: true });
   await mockMapApi(page);
@@ -124,7 +214,7 @@ test("editor loads, saves atomically, and shows validation failure", async ({ pa
   await expect(page.getByText("Chưa lưu").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Lưu map" })).toBeEnabled();
   await page.getByRole("button", { name: "Lưu map" }).click();
-  await expect(page.getByText(/Đã lưu revision \d+\./)).toBeVisible();
+  await expect(page.getByText(/Đã lưu map r\d+ và đồng bộ Map Flow r\d+\./)).toBeVisible();
   await page.screenshot({ path: `${evidenceDir}/map-editor-pass.png`, fullPage: true });
 
   await name.fill("");
@@ -134,23 +224,25 @@ test("editor loads, saves atomically, and shows validation failure", async ({ pa
   await page.screenshot({ path: `${evidenceDir}/map-editor-validation-fail.png`, fullPage: true });
 });
 
-test("Map Flow clones, links, persists layout, and preserves invalid drafts", async ({ page }) => {
+test("Map Flow creates maps, configures entrypoints, links portals, and persists layout", async ({ page }) => {
   await mkdir(evidenceDir, { recursive: true });
-  await mockMapApi(page);
+  const api = await mockMapApi(page);
   await page.goto("/admin/maps");
-  await page.getByRole("button", { name: "Map Flow" }).click();
+  await page.getByRole("button", { name: "Tạo map mới" }).click();
   await expect(page.getByLabel("Map Flow editor")).toBeVisible();
 
   await page.getByLabel("Map ID mới").fill("second-map");
-  await page.getByLabel("Display name mới").fill("Map thứ hai");
-  await page.getByRole("button", { name: "Clone map" }).click();
-  await expect(page.getByText(/Đã clone second-map revision 1/)).toBeVisible();
+  await page.getByLabel("Tên hiển thị").fill("Map thứ hai");
+  await page.getByRole("button", { name: "Tạo map", exact: true }).click();
+  await expect(page.getByText(/Đã tạo map second-map revision 1/)).toBeVisible();
   await expect(page.getByLabel("Map đang chọn")).toHaveValue("second-map");
+
+  await page.getByRole("group", { name: "2. Entrypoint của map" }).getByLabel("ID").fill("arrival");
 
   await page.getByRole("button", { name: "Output vanlang" }).click();
   await page.getByRole("button", { name: "Input second-map" }).click();
   await expect(page.getByLabel("Portal", { exact: true })).toHaveValue(/portal-second-map/);
-  await page.getByLabel("Entry point đích").selectOption("default");
+  await expect(page.getByLabel("Entrypoint đích")).toHaveValue("arrival");
 
   const node = page.locator(".map-flow-node").filter({ hasText: "second-map" });
   const bounds = await node.boundingBox();
@@ -160,12 +252,16 @@ test("Map Flow clones, links, persists layout, and preserves invalid drafts", as
   await page.mouse.move(bounds.x - 90, bounds.y - 80, { steps: 5 });
   await page.mouse.up();
   const savedNodeX = await page.getByLabel("Node X").inputValue();
+  expect(Number(savedNodeX)).not.toBeCloseTo(0.75);
   await page.getByRole("button", { name: "Save Flow" }).click();
   await expect(page.getByText(/Đã lưu flow revision/)).toBeVisible();
+  expect(api.flowMap("vanlang")?.portals[0].target).toEqual({ mapId: "second-map", entryPointId: "arrival" });
   await page.getByRole("button", { name: "Reload" }).click();
   await expect(page.getByLabel("Node X")).toHaveValue(savedNodeX);
-  await page.screenshot({ path: `${evidenceDir}/map-flow-clone-portal-pass.png`, fullPage: true });
+  await page.screenshot({ path: `${evidenceDir}/map-flow-create-portal-pass.png`, fullPage: true });
 
+  await page.getByLabel("Map đang chọn").selectOption("vanlang");
+  await page.getByLabel("Portal", { exact: true }).selectOption("portal-second-map-1");
   await page.getByLabel("Trigger X").fill("9000");
   await page.getByRole("button", { name: "Save Flow" }).click();
   await expect(page.getByText(/MAP_FLOW_INVALID: draft local vẫn được giữ/)).toBeVisible();
@@ -203,7 +299,7 @@ test("failed and rapid saves preserve the newest working copy without reverse ov
   await expect.poll(delayed.saveCount).toBe(1);
   await name.fill("Newest working copy");
   delayed.releaseSave();
-  await expect(page.getByText(/Đã lưu revision 2\./)).toBeVisible();
+  await expect(page.getByText(/Đã lưu map r2 và đồng bộ Map Flow r2\./)).toBeVisible();
   await expect(name).toHaveValue("Newest working copy");
   await expect(page.getByText("Chưa lưu").first()).toBeVisible();
   expect(delayed.active().metadata.name).toBe("Submitted copy");
@@ -339,7 +435,7 @@ test("live legacy save preserves the pinned runtime snapshot and invalid geometr
     await page.mouse.up();
 
     await page.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(page.getByText(/Đã lưu revision \d+\./)).toBeVisible();
+    await expect(page.getByText(/Đã lưu map r\d+ và đồng bộ Map Flow r\d+\./)).toBeVisible();
     await page.screenshot({ path: `${evidenceDir}/08-live-editor-save-pass.png`, fullPage: true });
 
     await page.reload();

@@ -1,4 +1,5 @@
 sandbox_mode = "danger-full-access"
+web_search = "live"
 [mcp_servers.codegraph]
 command = "codegraph"
 args = ["serve", "--mcp"]

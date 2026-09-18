@@ -111,7 +111,7 @@ export function createDatabaseMapFlowsRepository(hooks: { afterMapRevisionInsert
       const mapChecksum = checksumFor(canonical);
       await client.query(`INSERT INTO maps(map_id, display_name, description, thumbnail_src) VALUES ($1, $2, $3, $4)`, [input.mapId, canonical.metadata.name, canonical.metadata.description, canonical.metadata.thumbnailSrc ?? null]);
       const insertedMap = await client.query<{ id: string; created_at: Date }>(
-        `INSERT INTO map_revisions(map_id, revision, schema_version, document, checksum, created_by) VALUES ($1, 1, 2, $2::jsonb, $3, 'local-editor') RETURNING id, created_at`,
+        `INSERT INTO map_revisions(map_id, revision, schema_version, document, checksum, created_by) VALUES ($1, 1, 3, $2::jsonb, $3, 'local-editor') RETURNING id, created_at`,
         [input.mapId, canonicalStringify(canonical), mapChecksum],
       );
       await client.query("UPDATE maps SET active_revision_id = $2, updated_at = NOW() WHERE map_id = $1", [input.mapId, insertedMap.rows[0].id]);
@@ -180,12 +180,12 @@ export function createDatabaseMapFlowsRepository(hooks: { afterMapRevisionInsert
       const savedMaps: MapRevisionEnvelope[] = [];
       const nextRevisions = new Map<string, number>();
       for (const mapId of [...dirtyById.keys()].sort()) {
-        const current = baseRows.get(mapId)!;
         const document = resolved.get(mapId)!;
-        const revision = current.revision + 1;
+        const latest = await client.query<{ revision: number }>("SELECT COALESCE(MAX(revision), 0)::int AS revision FROM map_revisions WHERE map_id = $1", [mapId]);
+        const revision = latest.rows[0].revision + 1;
         const checksum = checksumFor(document);
         const inserted = await client.query<{ id: string; created_at: Date }>(
-          `INSERT INTO map_revisions(map_id, revision, schema_version, document, checksum, created_by) VALUES ($1, $2, 2, $3::jsonb, $4, 'local-editor') RETURNING id, created_at`,
+          `INSERT INTO map_revisions(map_id, revision, schema_version, document, checksum, created_by) VALUES ($1, $2, 3, $3::jsonb, $4, 'local-editor') RETURNING id, created_at`,
           [mapId, revision, canonicalStringify(document), checksum],
         );
         await hooks.afterMapRevisionInsert?.(mapId);

@@ -1,0 +1,69 @@
+import multipart from "@fastify/multipart";
+import { createHash } from "node:crypto";
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
+import { Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { FastifyPluginAsync } from "fastify";
+import { getServerEnv } from "../server/env.js";
+import { optimizeGlb, publishGlb, validateGlb, type OptimizeRunner } from "../server/assets/glb-pipeline.js";
+
+type Options = { storageDir?: string; maxBytes?: number; writeEnabled?: boolean; frontendUrl?: string; runner?: OptimizeRunner };
+const checksumPattern = /^[a-f0-9]{64}$/;
+
+export const assetsRoutes: FastifyPluginAsync<Options> = async (app, options) => {
+  const env = options.storageDir === undefined || options.maxBytes === undefined || options.writeEnabled === undefined || options.frontendUrl === undefined ? getServerEnv() : null;
+  const storageDir = resolve(options.storageDir ?? env!.ASSET_STORAGE_DIR);
+  const maxBytes = options.maxBytes ?? env!.ASSET_UPLOAD_MAX_BYTES;
+  const writeEnabled = options.writeEnabled ?? env!.MAP_EDITOR_WRITE_ENABLED;
+  const frontendUrl = options.frontendUrl ?? env!.FRONTEND_URL;
+  await mkdir(`${storageDir}/glb`, { recursive: true });
+  await app.register(multipart, { limits: { files: 1, fileSize: maxBytes, fields: 0 } });
+
+  app.post("/api/admin/assets/glb", async (request, reply) => {
+    if (!writeEnabled) return reply.status(403).send({ code: "ASSET_UPLOAD_DISABLED" });
+    if (request.headers.origin !== frontendUrl) return reply.status(403).send({ code: "MAP_EDITOR_ORIGIN_REJECTED" });
+    const tempDir = await mkdtemp(`${tmpdir()}/vanlang-glb-`);
+    const input = `${tempDir}/source.glb`;
+    const output = `${tempDir}/runtime.glb`;
+    try {
+      const part = await request.file();
+      if (!part || part.fieldname !== "file" || !part.filename.toLowerCase().endsWith(".glb")) return reply.status(400).send({ code: "GLB_FILE_REQUIRED" });
+      const hash = createHash("sha256");
+      let originalBytes = 0;
+      const counter = new Transform({ transform(chunk: Buffer, _encoding, callback) { originalBytes += chunk.length; hash.update(chunk); callback(null, chunk); } });
+      await pipeline(part.file, counter, createWriteStream(input, { flags: "wx" }));
+      if (part.file.truncated) return reply.status(413).send({ code: "GLB_TOO_LARGE" });
+      validateGlb(await readFile(input));
+      const checksum = hash.digest("hex");
+      const summary = await optimizeGlb(input, output, options.runner);
+      const runtimeBytes = (await stat(output)).size;
+      const published = await publishGlb(output, storageDir, checksum);
+      return reply.status(published.reused ? 200 : 201).send({
+        assetId: checksum, checksum, src: `/runtime-assets/glb/${checksum}.glb`, originalBytes, runtimeBytes, reused: published.reused, summary,
+      });
+    } catch (error) {
+      request.log.warn(error, "GLB import failed");
+      const message = (error as Error).message;
+      if (message === "GLB_INVALID" || message === "GLB_EXTERNAL_URI") return reply.status(422).send({ code: "GLB_INVALID" });
+      if ((error as { code?: string }).code === "FST_REQ_FILE_TOO_LARGE") return reply.status(413).send({ code: "GLB_TOO_LARGE" });
+      return reply.status(422).send({ code: "GLB_OPTIMIZE_FAILED" });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  app.get("/api/assets/glb/:checksum.glb", async (request, reply) => {
+    const checksum = (request.params as { checksum?: string }).checksum ?? "";
+    if (!checksumPattern.test(checksum)) return reply.status(400).send({ code: "INVALID_ASSET_ID" });
+    const path = `${storageDir}/glb/${checksum}.glb`;
+    try {
+      await stat(path);
+      const etag = `"${checksum}"`;
+      if (request.headers["if-none-match"] === etag) return reply.status(304).send();
+      return reply.header("ETag", etag).header("Cache-Control", "public, max-age=31536000, immutable").type("model/gltf-binary").send(createReadStream(path));
+    } catch { return reply.status(404).send({ code: "ASSET_NOT_FOUND" }); }
+  });
+};
