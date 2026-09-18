@@ -25,7 +25,7 @@ Backend chạy migration idempotent trước mỗi lần khởi động. Migrati
 5. Xác nhận `https://<service>.onrender.com/api/health` trả `200`.
 6. Gắn custom domain `api.<domain>` và cập nhật lại `FRONTEND_URL` nếu cần.
 
-`autoDeployTrigger` hiện để `commit` nhằm deploy khi `main` thay đổi trong lúc GitHub Actions của tài khoản đang bị khóa billing. Sau khi CI hoạt động lại, đổi thành `checksPass`.
+`autoDeployTrigger` dùng `checksPass`: sau khi `main` thay đổi, Render chỉ bắt đầu deploy khi các check CI của đúng commit đó đã pass. Nếu CI fail hoặc không có check, production không được deploy commit lỗi.
 
 Render Free ngủ sau thời gian không có request. Request đầu tiên sau khi ngủ có thể chậm. Không lưu file lâu dài trên filesystem của service.
 
@@ -81,4 +81,10 @@ GET https://<domain>/
 GET https://<domain>/admin/maps
 ```
 
-Sau mỗi merge vào `main`, Render và Vercel tự build/deploy commit mới. Khi GitHub Actions hoạt động lại, bảo vệ `main` và yêu cầu CI pass trước khi merge.
+Sau mỗi merge vào `main`, luồng production diễn ra theo thứ tự:
+
+1. GitHub Actions cài dependency, lint, typecheck, build, test và validate Docker Compose.
+2. Nếu các check pass, Render tự build/deploy backend theo `render.yaml`.
+3. Vercel tự tạo production deployment cho frontend nếu project đã được liên kết với repository.
+
+Để Vercel cũng chỉ promote frontend sau khi CI pass, bật **Deployment Checks** trong Vercel Project Settings và chọn check CI của workflow. GitHub Actions hiển thị kết quả của từng commit trong tab Actions; có thể bật GitHub/Render/Vercel notifications trong phần cài đặt tài khoản hoặc project.

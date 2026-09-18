@@ -5,7 +5,7 @@ services:
     plan: free
     region: singapore
     branch: main
-    autoDeployTrigger: commit
+    autoDeployTrigger: checksPass
     buildCommand: corepack enable && corepack prepare pnpm@11.19.0 --activate && pnpm install --frozen-lockfile --prod=false && pnpm --filter @van-lang/map-contract build && pnpm --filter @van-lang/backend build
     startCommand: pnpm --dir backend db:migrate && pnpm --dir backend start
     healthCheckPath: /api/health

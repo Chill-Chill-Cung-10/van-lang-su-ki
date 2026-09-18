@@ -260,7 +260,7 @@ codegraph impact <symbol>
 
 Sau khi thay đổi code, chạy lại `codegraph sync` và xác nhận index đã cập nhật.
 
-## 11. Continuous Integration
+## 11. Continuous Integration và Deployment
 
 Workflow `.github/workflows/ci.yml` tự chạy khi push hoặc tạo pull request vào `main`, đồng thời hỗ trợ chạy thủ công từ tab Actions.
 
@@ -274,3 +274,5 @@ CI sử dụng pnpm 11.19.0 và Node.js 22 trên Ubuntu, với quyền GitHub to
 6. Kiểm tra cấu hình bằng `docker compose config --quiet`.
 
 Các run cũ trên cùng branch sẽ được hủy khi có commit mới để tiết kiệm thời gian CI.
+
+Production backend dùng Render với `autoDeployTrigger: checksPass`. Vì vậy sau khi merge vào `main`, Render chỉ rebuild/deploy khi toàn bộ CI check của commit mới thành công. Frontend dùng Vercel Git integration; nếu cần chặn promote production theo cùng CI check, bật Deployment Checks trong Vercel Project Settings.
