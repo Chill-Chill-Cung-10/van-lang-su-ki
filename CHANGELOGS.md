@@ -138,6 +138,9 @@ Tài liệu này ghi nhận các thay đổi đáng chú ý theo từng phiên b
 - Bổ sung cấu hình và kéo thả điểm Spawn (`navigation.spawn`) trong Map Editor: thêm trường số `Spawn X` và `Spawn Z` trong mục Map Settings, hỗ trợ kéo thả trực tiếp marker Spawn trên cả Viewport 2D và Viewport Overlay 3D, đồng thời tự động căn spawn về vị trí hợp lệ gần nhất khi lưu bản đồ.
 - Tích hợp hệ thống cảnh báo và định vị vị trí Spawn Point hợp lệ: gắn thẻ cảnh báo trực quan riêng cho Spawn trong danh sách validation với chẩn đoán chi tiết nguyên nhân vi phạm (ngoài vùng walkable, chạm mép polygon hoặc va chạm vật cản), hiển thị vòng tròn footprint bán kính nhân vật (`playerRadius`) đổi màu xanh/đỏ trực tiếp trên cả 2D và 3D Overlay, kèm banner hướng dẫn và nút đưa nhanh về vị trí hợp lệ gần nhất (`nearestValidPoint`).
 
+- Thêm adapter publish GLB lên object storage S3-compatible và redirect đọc asset qua public storage URL, trong khi local/test tiếp tục dùng filesystem.
+- Thêm cấu hình deploy chi phí thấp cho Vercel/Render, migration schema nền dùng được với Supabase và tài liệu cấu hình domain, secret cùng giới hạn upload production.
+- Cấu hình Render chỉ tự rebuild/deploy production sau khi CI của commit trên `main` pass; bổ sung tài liệu luồng CI/CD và Deployment Checks cho Vercel.
 - Thêm ngân hàng 340 câu hỏi trắc nghiệm Chặng 1 (Kinh Dương Vương): migration tạo bảng `stages` (13 ải) và `questions` (340 câu, 4 mức độ Bloom, 4 nhóm nguồn), Drizzle schema, dữ liệu JSON chuẩn hóa từ Excel, seed script idempotent và hai API endpoint (`GET /api/questions/stage/:code` rút câu ngẫu nhiên theo cơ cấu mức độ, `POST /api/questions/answer` ghi nhận kết quả vào `learning_attempts` và trả phản hồi chi tiết).
 - Cho phép giữ và kéo trực tiếp mọi entrypoint và NPC trên viewport 2D, đồng bộ lựa chọn, tọa độ và trạng thái chưa lưu với inspector hiện có.
 - Đồng bộ vùng đang chọn giữa viewport 2D, góc nhìn 3D và Overlay; hiển thị entrypoint cùng portal point trực tiếp trong cả hai chế độ 3D.
@@ -187,6 +190,7 @@ Tài liệu này ghi nhận các thay đổi đáng chú ý theo từng phiên b
 
 ### Fixed
 
+- Build package map contract trước khi chạy test backend và đưa toàn bộ unit test vào CI, tránh lỗi thiếu `dist/index.js` trên checkout sạch.
 - Loại bỏ lối vào viewport 2D dùng phép chiếu hard-code lệch với runtime; chuyển chỉnh/tạo walkable polygon, entrypoint, portal và NPC sang cùng world-space, camera và root transform của mode 3D/Overlay.
 - Tự sửa portal trigger ngoài navmesh khi lưu, hiển thị marker spawn trong viewport 2D và overlay 3D, đồng thời bổ sung kiểm thử browser cho spawn và dịch chuyển portal tới entry point.
 - Tự động đưa entry point nằm sát mép hoặc ngoài navmesh về vị trí hợp lệ gần nhất khi lưu map, đồng thời cập nhật lại tọa độ đã lưu trên giao diện.

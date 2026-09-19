@@ -51,5 +51,8 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Test
+        run: pnpm test
+
       - name: Validate Docker Compose
         run: docker compose config --quiet

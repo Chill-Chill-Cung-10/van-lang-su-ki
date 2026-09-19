@@ -233,6 +233,8 @@ Khóa OpenAI chỉ được đọc trong backend và không được dùng tiề
 
 Chi tiết nằm trong `docs/ARCHITECTURE.md`. Tài liệu yêu cầu chuẩn nằm trong `docs/requirements/DAU_AN_DAI_VIET_AI_REQUIREMENTS_VERSION_0.docx`; tài liệu nguồn nằm trong `docs/references`.
 
+Checklist triển khai Vercel, Render, Supabase và domain production nằm trong `docs/DEPLOYMENT.md`.
+
 ## 9. Trạng thái Version 0
 
 Base project hiện cung cấp hai ứng dụng tách biệt, giao diện khởi đầu, gameplay mẫu, API mẫu và hạ tầng local. Xác thực người dùng, CMS đầy đủ, RAG trên kho tri thức và pipeline tối ưu GLB là các hạng mục tiếp theo, chưa phải tính năng production hoàn chỉnh.
@@ -258,7 +260,7 @@ codegraph impact <symbol>
 
 Sau khi thay đổi code, chạy lại `codegraph sync` và xác nhận index đã cập nhật.
 
-## 11. Continuous Integration
+## 11. Continuous Integration và Deployment
 
 Workflow `.github/workflows/ci.yml` tự chạy khi push hoặc tạo pull request vào `main`, đồng thời hỗ trợ chạy thủ công từ tab Actions.
 
@@ -268,6 +270,9 @@ CI sử dụng pnpm 11.19.0 và Node.js 22 trên Ubuntu, với quyền GitHub to
 2. Chạy `pnpm lint`.
 3. Chạy `pnpm typecheck`.
 4. Chạy `pnpm build`.
-5. Kiểm tra cấu hình bằng `docker compose config --quiet`.
+5. Chạy `pnpm test`.
+6. Kiểm tra cấu hình bằng `docker compose config --quiet`.
 
 Các run cũ trên cùng branch sẽ được hủy khi có commit mới để tiết kiệm thời gian CI.
+
+Production backend dùng Render với `autoDeployTrigger: checksPass`. Vì vậy sau khi merge vào `main`, Render chỉ rebuild/deploy khi toàn bộ CI check của commit mới thành công. Frontend dùng Vercel Git integration; nếu cần chặn promote production theo cùng CI check, bật Deployment Checks trong Vercel Project Settings.

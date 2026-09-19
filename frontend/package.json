@@ -5,6 +5,7 @@
   "scripts": {
     "preinstall": "node ../scripts/ensure-pnpm.mjs",
     "dev": "next dev",
+    "prebuild": "pnpm --dir ../packages/map-contract build",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
