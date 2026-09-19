@@ -19,6 +19,9 @@ type EntryStage = "menu" | "prologue" | "game";
 const ACCOUNTS_KEY = "vanlang-accounts-v1";
 const SESSION_KEY = "vanlang-session-v1";
 const GAME_PROGRESS_KEY = "vanlang-game-mock-v4";
+const EDITOR_EMAIL = "admin@gmail.com";
+const EDITOR_PASSWORD = "12345678";
+const EDITOR_ACCOUNT: Account = { name: "Quản trị viên", email: EDITOR_EMAIL, passwordHash: "" };
 
 async function hashPassword(password: string) {
   const bytes = new TextEncoder().encode(password);
@@ -104,9 +107,14 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
       showError("Mật khẩu nhập lại chưa khớp.");
       return;
     }
+    if (mode === "register" && normalizedEmail === EDITOR_EMAIL) {
+      showError("Tài khoản quản trị đã được cấu hình sẵn. Hãy đăng nhập để tiếp tục.");
+      return;
+    }
 
     setBusy(true);
     const accounts = readAccounts();
+    const isEditorLogin = mode === "login" && normalizedEmail === EDITOR_EMAIL && password === EDITOR_PASSWORD;
     const existing = accounts.find((account) => account.email === normalizedEmail);
     const passwordHash = await hashPassword(password);
 
@@ -121,7 +129,10 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
         setConfirmation("");
         setMessage("Tạo tài khoản thành công. Bạn có thể đăng nhập ngay, không cần xác thực.");
       }
-    } else if (!existing || existing.passwordHash !== passwordHash) {
+    } else if (isEditorLogin) {
+      window.localStorage.setItem(SESSION_KEY, EDITOR_EMAIL);
+      onAuthenticated();
+    } else if (normalizedEmail === EDITOR_EMAIL || !existing || existing.passwordHash !== passwordHash) {
       showError("Email hoặc mật khẩu chưa đúng.");
     } else {
       window.localStorage.setItem(SESSION_KEY, existing.email);
@@ -202,10 +213,10 @@ function MainMenu({ account, onStart, onContinue, onLogout }: { account: Account
     () => [
       ...(hasSave ? [{ label: "Tiếp tục", action: onContinue }] : []),
       { label: "Bắt đầu", action: onStart },
-      { label: "Editor Mode", action: () => router.push("/admin/maps") },
+      ...(account.email === EDITOR_EMAIL ? [{ label: "Editor Mode", action: () => router.push("/admin/maps") }] : []),
       { label: "Lựa chọn", action: () => setShowOptions(true) },
     ],
-    [hasSave, onContinue, onStart, router],
+    [account.email, hasSave, onContinue, onStart, router],
   );
   const [selected, setSelected] = useState(0);
 
@@ -286,14 +297,14 @@ function MainMenu({ account, onStart, onContinue, onLogout }: { account: Account
 export default function VanlangEntry() {
   const sessionEmail = useSyncExternalStore(subscribeToSession, getSessionSnapshot, getServerSessionSnapshot);
   const account = useMemo(
-    () => sessionEmail ? readAccounts().find((item) => item.email === sessionEmail) ?? null : null,
+    () => sessionEmail ? (sessionEmail === EDITOR_EMAIL ? EDITOR_ACCOUNT : readAccounts().find((item) => item.email === sessionEmail) ?? null) : null,
     [sessionEmail],
   );
   const [stage, setStage] = useState<EntryStage>("menu");
   const [gameInitialScreen, setGameInitialScreen] = useState<"map" | undefined>();
 
   if (stage === "game") {
-    return <VanlangGameShell accountId={account?.email ?? sessionEmail} initialScreen={gameInitialScreen} onBackToMenu={() => setStage("menu")} />;
+    return <VanlangGameShell accountId={account?.email ?? sessionEmail} accountName={account?.name ?? sessionEmail} initialScreen={gameInitialScreen} onBackToMenu={() => setStage("menu")} />;
   }
   if (!account) {
     return <AuthScreen onAuthenticated={() => { setStage("menu"); window.dispatchEvent(new Event("vanlang-session")); }} />;

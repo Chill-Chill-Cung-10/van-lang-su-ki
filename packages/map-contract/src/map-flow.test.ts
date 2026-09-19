@@ -1,17 +1,18 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { canonicalStringify, upgradeMapDocument, validateMapDocument, validateMapFlowDocument, validateMapFlowSnapshot } from "./index.js";
+import { canonicalStringify, getNpcDialogueChain, upgradeMapDocument, validateMapDocument, validateMapFlowDocument, validateMapFlowSnapshot } from "./index.js";
 
 const fixture = JSON.parse(await readFile(new URL("../maps/vanlang.v1.json", import.meta.url), "utf8"));
 
 test("upgrades V1 without mutating the fixture", () => {
   const before = canonicalStringify(fixture);
   const upgraded = upgradeMapDocument(fixture);
-  assert.equal(upgraded.schemaVersion, 3);
+  assert.equal(upgraded.schemaVersion, 4);
   assert.deepEqual(upgraded.npcs, []);
   assert.deepEqual(upgraded.portals, []);
   assert.deepEqual(upgraded.navigation.entryPoints, [{ id: "default", position: fixture.navigation.spawn, facingDeg: 0 }]);
+  assert.equal(upgraded.navigation.spawnFacingDeg, 180);
   assert.equal(canonicalStringify(fixture), before);
 });
 
@@ -38,6 +39,54 @@ test("validates V3 NPC data and preserves legacy compatibility", () => {
   const outside = validateMapDocument(document);
   assert.equal(outside.success, false);
   if (!outside.success) assert.equal(outside.issues.some((issue) => issue.code === "INVALID_NPC_POSITION"), true);
+});
+
+test("supports and validates NPC multi-conversation chain and fallback", () => {
+  const document = upgradeMapDocument(fixture);
+  const npcWithChain = {
+    id: "elder",
+    name: "Già làng",
+    src: "/runtime-assets/glb/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.glb",
+    transform: { position: { x: document.navigation.spawn.x, y: document.world.groundY, z: document.navigation.spawn.z }, rotationDeg: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+    dialogue: "Chào mừng tráng sĩ đến với Văn Lang.",
+    dialogueChain: [
+      { text: "Chào mừng tráng sĩ đến với Văn Lang." },
+      { text: "Nơi đây lưu giữ ký ức về thời kỳ dựng nước.", speaker: "Già làng" },
+      { text: "Ta sẽ cố gắng tìm lại cổ vật!", speaker: "Người chơi" },
+    ],
+  };
+  document.npcs = [npcWithChain];
+  const valid = validateMapDocument(document);
+  assert.equal(valid.success, true);
+  if (valid.success) {
+    assert.deepEqual(valid.document.npcs[0].dialogueChain, npcWithChain.dialogueChain);
+    const resolvedChain = getNpcDialogueChain(valid.document.npcs[0]);
+    assert.equal(resolvedChain.length, 3);
+    assert.equal(resolvedChain[0].text, "Chào mừng tráng sĩ đến với Văn Lang.");
+    assert.equal(resolvedChain[2].speaker, "Người chơi");
+  }
+
+  // Legacy NPC without dialogueChain
+  const legacyNpc = {
+    id: "legacy-guide",
+    name: "Hướng dẫn viên",
+    src: "/runtime-assets/glb/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.glb",
+    transform: { position: { x: document.navigation.spawn.x, y: document.world.groundY, z: document.navigation.spawn.z }, rotationDeg: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+    dialogue: "Câu thoại đơn lẻ.",
+  };
+  const legacyChain = getNpcDialogueChain(legacyNpc);
+  assert.equal(legacyChain.length, 1);
+  assert.equal(legacyChain[0].text, "Câu thoại đơn lẻ.");
+  assert.equal(legacyChain[0].speaker, "Hướng dẫn viên");
+
+  // Invalid step: empty text
+  const invalidNpc = {
+    ...npcWithChain,
+    dialogueChain: [{ text: "" }],
+  };
+  document.npcs = [invalidNpc];
+  const invalid = validateMapDocument(document);
+  assert.equal(invalid.success, false);
 });
 
 test("validates duplicate portal IDs and invalid trigger or entry positions", () => {

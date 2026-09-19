@@ -64,7 +64,7 @@ export function closestPointOnSegment(point: Vec2, start: Vec2, end: Vec2): Vec2
   return { x: start.x + dx * t, z: start.z + dz * t };
 }
 
-function distanceToPolygonEdges(point: Vec2, points: Vec2[]) {
+export function distanceToPolygonEdges(point: Vec2, points: Vec2[]) {
   let distance = Number.POSITIVE_INFINITY;
   for (let index = 0; index < points.length; index += 1) {
     const closest = closestPointOnSegment(point, points[index], points[(index + 1) % points.length]);

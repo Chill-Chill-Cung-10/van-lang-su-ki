@@ -66,7 +66,7 @@ export const MapDocumentSchemaV1 = z.object({
   schemaVersion: z.literal(1),
   mapId: slug,
   metadata: z.object({
-    name: z.string().min(1).max(120), description: z.string().max(1_000), ariaLabel: z.string().min(1).max(160), thumbnailSrc: assetPath.optional(),
+    name: z.string().min(1).max(120), description: z.string().max(1_000), ariaLabel: z.string().min(1).max(160), thumbnailSrc: assetPath.optional(), playerPortraitSrc: assetPath.optional(),
   }).strict(),
   background: z.object({
     src: assetPath, alt: z.string().max(240), fit: z.enum(["contain", "cover", "fill"]), color: z.string().regex(/^#[0-9a-fA-F]{6}$/), aspectRatio: positive,
@@ -93,22 +93,42 @@ export const MapDocumentSchemaV2 = MapDocumentSchemaV1.omit({ schemaVersion: tru
   navigation: MapDocumentSchemaV1.shape.navigation.extend({ entryPoints: z.array(EntryPointSchemaV2).min(1).max(64) }).strict(),
   portals: z.array(DirectedPortalSchemaV2).max(128),
 }).strict();
+export const MapNpcDialogueStepSchema = z.object({
+  id: z.string().trim().max(64).optional(),
+  speaker: z.string().trim().max(120).optional(),
+  text: z.string().trim().min(1).max(2_000),
+}).strict();
+export type MapNpcDialogueStep = z.infer<typeof MapNpcDialogueStepSchema>;
+
 export const MapNpcSchemaV3 = z.object({
   id: slug,
   name: z.string().trim().min(1).max(120),
   src: assetPath,
+  portraitSrc: assetPath.optional(),
   transform: Transform3DSchema,
   dialogue: z.string().trim().min(1).max(2_000),
+  dialogueChain: z.array(MapNpcDialogueStepSchema).min(1).max(64).optional(),
 }).strict();
+
+export function getNpcDialogueChain(npc: { name: string; dialogue: string; dialogueChain?: MapNpcDialogueStep[] }): MapNpcDialogueStep[] {
+  if (npc.dialogueChain && npc.dialogueChain.length > 0) {
+    return npc.dialogueChain;
+  }
+  return [{ text: npc.dialogue, speaker: npc.name }];
+}
 export const MapDocumentSchemaV3 = MapDocumentSchemaV2.omit({ schemaVersion: true }).extend({
   schemaVersion: z.literal(3),
   npcs: z.array(MapNpcSchemaV3).max(128),
 }).strict();
-export const MapDocumentSchema = z.discriminatedUnion("schemaVersion", [MapDocumentSchemaV1, MapDocumentSchemaV2, MapDocumentSchemaV3]);
+export const MapDocumentSchemaV4 = MapDocumentSchemaV3.omit({ schemaVersion: true, navigation: true }).extend({
+  schemaVersion: z.literal(4),
+  navigation: MapDocumentSchemaV3.shape.navigation.extend({ spawnFacingDeg: finite }).strict(),
+}).strict();
+export const MapDocumentSchema = z.discriminatedUnion("schemaVersion", [MapDocumentSchemaV1, MapDocumentSchemaV2, MapDocumentSchemaV3, MapDocumentSchemaV4]);
 export type MapDocumentInput = z.infer<typeof MapDocumentSchema>;
 export type MapDocumentV1 = z.infer<typeof MapDocumentSchemaV1>;
 export type MapDocumentV2 = z.infer<typeof MapDocumentSchemaV2>;
-export type MapDocument = z.infer<typeof MapDocumentSchemaV3>;
+export type MapDocument = z.infer<typeof MapDocumentSchemaV4>;
 export type MapNpc = z.infer<typeof MapNpcSchemaV3>;
 export type MapObject = z.infer<typeof MapObjectSchema>;
 export type Collider = z.infer<typeof ColliderSchema>;
@@ -118,9 +138,10 @@ export type DirectedPortal = z.infer<typeof DirectedPortalSchemaV2>;
 
 export function upgradeMapDocument(input: unknown): MapDocument {
   const document = MapDocumentSchema.parse(input);
-  if (document.schemaVersion === 3) return structuredClone(document);
+  if (document.schemaVersion === 4) return structuredClone(document);
   const v2: MapDocumentV2 = document.schemaVersion === 2 ? structuredClone(document) : { ...structuredClone(document), schemaVersion: 2, navigation: { ...structuredClone(document.navigation), entryPoints: [{ id: "default", position: { ...document.navigation.spawn }, facingDeg: 0 }] }, portals: [] };
-  return { ...v2, schemaVersion: 3, npcs: [] };
+  const v3 = document.schemaVersion === 3 ? structuredClone(document) : { ...v2, schemaVersion: 3 as const, npcs: [] };
+  return { ...v3, schemaVersion: 4, navigation: { ...v3.navigation, spawnFacingDeg: 180 } };
 }
 
 export const MapFlowNodeSchemaV1 = z.object({ mapId: slug, mapRevision: z.number().int().positive(), position: z.object({ x: z.number().finite().min(0).max(1), y: z.number().finite().min(0).max(1) }).strict() }).strict();
@@ -137,9 +158,9 @@ export const MapRevisionEnvelopeSchema = z.object({
   mapId: slug, revision: z.number().int().positive(), etag: z.string().min(1), activatedAt: z.string().datetime(), document: MapDocumentSchema,
 }).strict().transform((value) => ({ ...value, document: upgradeMapDocument(value.document) }));
 export const MapFlowEnvelopeSchema = z.object({ flowId: slug, revision: z.number().int().positive(), etag: z.string().min(1), activatedAt: z.string().datetime(), document: MapFlowDocumentSchemaV1 }).strict();
-export const SaveMapRequestSchema = z.object({ document: MapDocumentSchemaV3 }).strict();
-export const SaveMapFlowRequestSchema = z.object({ document: MapFlowDraftSchemaV1, maps: z.array(z.object({ mapId: slug, expectedEtag: z.string().min(1), document: MapDocumentSchemaV3 }).strict()).max(128) }).strict();
-export const CloneMapRequestSchema = z.object({ sourceMapId: slug, mapId: slug, metadata: MapDocumentSchemaV3.shape.metadata.pick({ name: true, description: true, thumbnailSrc: true }), nodePosition: MapFlowNodeSchemaV1.shape.position, expectedSourceMapEtag: z.string().min(1) }).strict();
+export const SaveMapRequestSchema = z.object({ document: MapDocumentSchemaV4 }).strict();
+export const SaveMapFlowRequestSchema = z.object({ document: MapFlowDraftSchemaV1, maps: z.array(z.object({ mapId: slug, expectedEtag: z.string().min(1), document: MapDocumentSchemaV4 }).strict()).max(128) }).strict();
+export const CloneMapRequestSchema = z.object({ sourceMapId: slug, mapId: slug, metadata: MapDocumentSchemaV4.shape.metadata.pick({ name: true, description: true, thumbnailSrc: true, playerPortraitSrc: true }), nodePosition: MapFlowNodeSchemaV1.shape.position, expectedSourceMapEtag: z.string().min(1) }).strict();
 export type MapSummary = z.infer<typeof MapSummarySchema>;
 export type MapRevisionEnvelope = z.infer<typeof MapRevisionEnvelopeSchema>;
 export type MapFlowEnvelope = z.infer<typeof MapFlowEnvelopeSchema>;
