@@ -418,6 +418,43 @@ test("portal transition commits after target ready, persists refresh, and rolls 
   expect(sourceAfterRefresh.playerPos).toEqual(sourceBeforeRefresh.playerPos);
 });
 
+test("map2 stone puzzle wrong retry, completion, and reload reveal Kinh Dương Vương", async ({ page }) => {
+  const fixture = JSON.parse(await readFile("packages/map-contract/maps/vanlang.v1.json", "utf8"));
+  const source = upgradeMapDocument(fixture);
+  source.portals = [{ id: "to-map2", enabled: true, trigger: { type: "circle", center: { x: 0, z: 0.28 }, radius: 0.13 }, target: { mapId: "map2", entryPointId: "default" } }];
+  const target = { ...upgradeMapDocument(fixture), mapId: "map2", metadata: { ...source.metadata, name: "Cổng Huyền Sử" }, objects: [{ id: "kinh-duong-vuong-stone", name: "Phiến đá Kinh Dương Vương", enabled: true, renderOrder: 1, collider: { type: "none" as const }, kind: "model3d" as const, renderLayer: "world3d" as const, src: "/models/vanlang-rebirth/arena.runtime.glb", transform3d: { position: { x: 1, y: 0.72, z: 1 }, rotationDeg: { x: 0, y: 0, z: 0 }, scale: { x: 0.1, y: 0.1, z: 0.1 } }, castShadow: false, receiveShadow: false }], navigation: { ...source.navigation, spawn: { x: 1, z: 1 }, entryPoints: [{ id: "default", position: { x: 1, z: 1 }, facingDeg: 0 }] }, portals: [], npcs: [{ id: "kinh-duong-vuong", name: "Kinh Dương Vương", src: "/models/vanlang-rebirth/hero.runtime.glb", transform: { position: { x: 1, y: 0.72, z: 1 }, rotationDeg: { x: 0, y: 0, z: 0 }, scale: { x: 0.1, y: 0.1, z: 0.1 } }, dialogue: "Ta là Kinh Dương Vương, tên Lộc Tục." }] };
+  await page.route("**/api/map-flows/vanlang/maps/**", (route) => { const mapId = new URL(route.request().url()).pathname.split("/").at(-1)!; const document = mapId === "map2" ? target : source; return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ mapId, revision: 1, etag: `\"${mapId}:1:test\"`, activatedAt: new Date(0).toISOString(), document }) }); });
+  const questions = Array.from({ length: 20 }, (_, index) => ({ id: `c1-M01-${index + 1}`, sortOrder: index + 1, topic: "Huyền sử", difficultyLevel: "recognize", questionText: `Câu hỏi M01 số ${index + 1}`, options: ["Đúng", "Sai A", "Sai B", "Sai C"], hint: null, damage: 10 }));
+  await page.route("**/api/questions/stage/M01?poolSize=20", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ stage: { code: "M01" }, questions }) }));
+  let correct = false;
+  await page.route("**/api/questions/answer", async (route) => { const body = route.request().postDataJSON(); correct = body.selectedOptionIndex === 0; return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ isCorrect: correct, correctOptionIndex: 0, damage: correct ? 10 : 0, feedback: correct ? "Chính xác" : "Hãy thử câu khác", generalExplanation: null }) }); });
+  const email = `stone-${Date.now()}@example.com`;
+  await registerAndLogin(page, "Stone Tester", email);
+  await finishPrologue(page);
+  await page.evaluate((account) => { localStorage.setItem(`vanlang-rebirth-seen:${account}`, "true"); localStorage.setItem(`vanlang:kinh-duong-vuong-stone:v1:${encodeURIComponent(account)}`, JSON.stringify({ version: 1, accountId: account, mapId: "map2", placed: Array.from({ length: 19 }, (_, index) => index + 1), seenQuestionIds: [], completed: false })); }, email);
+  await enterDungeon(page);
+  await page.getByRole("button", { name: "Bước vào ký ức" }).click();
+  await page.keyboard.press("KeyD");
+  await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem("vanlang-game-mock-v4") ?? "{}").selectedMap)).toBe("map2");
+  await expect(page.getByText("Phiến đá Kinh Dương Vương", { exact: true })).toBeVisible();
+  await expect(page.getByText("Kinh Dương Vương", { exact: true })).not.toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("heading", { name: "Phiến đá Kinh Dương Vương" })).toBeVisible();
+  await page.getByRole("button", { name: "Mảnh đá 20" }).click();
+  const firstQuestion = await page.locator(".stone-question > p").first().textContent();
+  await page.getByRole("button", { name: "Sai A" }).click(); await page.getByRole("button", { name: "Trả lời" }).click();
+  await expect(page.getByText("Tiến độ 19/20")).toBeVisible();
+  await page.getByRole("button", { name: "Thử mảnh lại" }).click(); await page.getByRole("button", { name: "Mảnh đá 20" }).click();
+  await expect(page.locator(".stone-question > p").first()).not.toHaveText(firstQuestion ?? "");
+  await page.getByRole("button", { name: "Đúng" }).click(); await page.getByRole("button", { name: "Trả lời" }).click();
+  await expect(page.getByText("Tiến độ 20/20")).toBeVisible();
+  await page.getByRole("button", { name: "Đóng thử thách" }).click();
+  await expect(page.getByText("Phiến đá Kinh Dương Vương", { exact: true })).not.toBeVisible();
+  await expect(page.getByText("Kinh Dương Vương", { exact: true })).toBeVisible();
+  await page.reload(); await page.getByRole("button", { name: "Tiếp tục" }).click();
+  await expect(page.getByText("Kinh Dương Vương", { exact: true })).toBeVisible();
+});
+
 
 
 

@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test src/**/*.test.ts",
     "db:migrate": "tsx --env-file=.env.local src/server/db/migrate.ts",
+    "db:seed:questions": "tsx --env-file=.env.local src/server/db/seeds/seed-questions.ts",
     "db:seed:maps": "tsx --env-file=.env.local src/server/db/seed-maps.ts"
   },
   "dependencies": {

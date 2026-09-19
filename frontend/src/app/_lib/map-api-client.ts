@@ -26,11 +26,30 @@ async function parseResponse(response: Response) {
 }
 
 export type ImportedGlb = { assetId: string; checksum: string; src: string; originalBytes: number; runtimeBytes: number; reused: boolean };
+export type ImportedImage = { assetId: string; checksum: string; src: string; bytes: number; reused: boolean };
+export type StageQuestion = { id: string; sortOrder: number; topic: string; difficultyLevel: string; questionText: string; options: string[]; hint: string | null; damage: number };
+export type QuestionAnswer = { isCorrect: boolean; correctOptionIndex: number; damage: number; feedback: string; generalExplanation: string | null };
+
+export async function loadQuestionPool(stageCode: string, poolSize: number): Promise<StageQuestion[]> {
+  const body = await parseResponse(await fetch(`${API_BASE_URL}/api/questions/stage/${encodeURIComponent(stageCode)}?poolSize=${poolSize}`, { cache: "no-store" })) as { questions?: StageQuestion[] };
+  if (!Array.isArray(body.questions) || body.questions.length < poolSize || body.questions.some((question) => "correctOptionIndex" in question)) throw new MapApiError(502, "QUESTION_POOL_INVALID");
+  return body.questions;
+}
+
+export async function submitQuestionAnswer(questionId: string, selectedOptionIndex: number): Promise<QuestionAnswer> {
+  return parseResponse(await fetch(`${API_BASE_URL}/api/questions/answer`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ questionId, selectedOptionIndex }) })) as Promise<QuestionAnswer>;
+}
 
 export async function importGlb(file: File): Promise<ImportedGlb> {
   const form = new FormData();
   form.set("file", file);
   return parseResponse(await fetch(`${API_BASE_URL}/api/admin/assets/glb`, { method: "POST", body: form })) as Promise<ImportedGlb>;
+}
+
+export async function importImage(file: File): Promise<ImportedImage> {
+  const form = new FormData();
+  form.set("file", file);
+  return parseResponse(await fetch(`${API_BASE_URL}/api/admin/assets/image`, { method: "POST", body: form })) as Promise<ImportedImage>;
 }
 
 export async function listMaps(): Promise<MapSummary[]> {

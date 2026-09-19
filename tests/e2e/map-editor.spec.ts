@@ -116,22 +116,82 @@ test("imports an NPC, saves and reloads its dialogue and transform", async ({ pa
   await panel.getByLabel("NPC GLB").setInputFiles("frontend/public/models/vanlang-rebirth/hero.runtime.glb");
   await panel.getByLabel("NPC ID").fill("historian");
   await panel.getByLabel("Tên").fill("Sử quan");
-  await panel.getByLabel("Hội thoại").fill("Hãy lắng nghe chuyện xưa.");
+  await panel.getByRole("textbox", { name: "Hội thoại" }).fill("Hãy lắng nghe chuyện xưa.");
+  await panel.getByLabel("Scale").fill("1.2");
+  await panel.getByLabel("Facing°").fill("45");
   await panel.getByRole("button", { name: "Import và thêm NPC" }).click();
   await expect(page.getByText(/Đã import và thêm NPC Sử quan/)).toBeVisible();
   await expect(page.getByLabel("Map viewport 3D")).toBeVisible();
 
-  const inspector = page.getByText("NPC", { exact: true }).last().locator("..");
+  const inspector = page.getByRole("complementary", { name: "NPC Inspector" });
   await inspector.getByLabel("Position Y").fill("0.75");
   await inspector.getByLabel("Position X").fill("0.25");
+  await inspector.getByLabel("Facing°").fill("60");
+  await inspector.getByLabel("Scale", { exact: true }).fill("1.5");
   await page.getByRole("button", { name: "Lưu map" }).click();
   await expect(page.getByText(/Đã lưu map r2 và đồng bộ Map Flow r2/)).toBeVisible();
-  expect(api.active().npcs[0]).toMatchObject({ id: "historian", name: "Sử quan", dialogue: "Hãy lắng nghe chuyện xưa.", transform: { position: { x: 0.25, y: 0.75 } } });
+  expect(api.active().npcs[0]).toMatchObject({
+    id: "historian",
+    name: "Sử quan",
+    dialogue: "Hãy lắng nghe chuyện xưa.",
+    transform: {
+      position: { x: 0.25, y: 0.75 },
+      rotationDeg: { x: 0, y: 60, z: 0 },
+      scale: { x: 1.5, y: 1.5, z: 1.5 },
+    },
+  });
 
   await page.reload();
   await expect(page.getByText("NPC GLB")).toBeVisible();
-  expect(api.active().npcs[0].transform.position).toMatchObject({ x: 0.25, y: 0.75 });
+  expect(api.active().npcs[0].transform).toMatchObject({
+    position: { x: 0.25, y: 0.75 },
+    rotationDeg: { x: 0, y: 60, z: 0 },
+    scale: { x: 1.5, y: 1.5, z: 1.5 },
+  });
   await page.screenshot({ path: `${evidenceDir}/npc-glb-import-save-reload-pass.png`, fullPage: true });
+});
+
+test("configures and saves multi-conversation chain with custom speaker and steps", async ({ page }) => {
+  await mkdir(evidenceDir, { recursive: true });
+  const api = await mockMapApi(page);
+  await page.goto("/admin/maps");
+  const panel = page.getByText("NPC GLB").locator("..");
+  await panel.getByLabel("NPC GLB").setInputFiles("frontend/public/models/vanlang-rebirth/hero.runtime.glb");
+  await panel.getByLabel("NPC ID").fill("elder");
+  await panel.getByLabel("Tên").fill("Già làng");
+  await panel.getByLabel("Hội thoại").fill("Chào mừng tráng sĩ đến với bản làng.");
+
+  // Add step 2
+  await panel.getByRole("button", { name: "+ Thêm lượt thoại" }).click();
+  await panel.getByLabel("Nội dung câu thoại 2").fill("Hãy giúp chúng ta bảo vệ di tích.");
+
+  // Add step 3 and assign speaker 'Người chơi'
+  await panel.getByRole("button", { name: "+ Thêm lượt thoại" }).click();
+  await panel.getByLabel("Nội dung câu thoại 3").fill("Xin hãy yên tâm, ta nhất định thành công.");
+  await panel.getByRole("button", { name: "Người chơi" }).last().click();
+
+  // Test preview
+  await panel.getByRole("button", { name: "Xem trước" }).click();
+  await expect(panel.getByText("Mô phỏng luồng thoại:")).toBeVisible();
+  const preview = panel.getByLabel("Xem trước chuỗi thoại");
+  await expect(preview.getByText("Chào mừng tráng sĩ đến với bản làng.")).toBeVisible();
+  await expect(preview.getByText("Xin hãy yên tâm, ta nhất định thành công.")).toBeVisible();
+
+  // Import NPC
+  await panel.getByRole("button", { name: "Import và thêm NPC" }).click();
+  await expect(page.getByText(/Đã import và thêm NPC Già làng/)).toBeVisible();
+
+  // Save map
+  await page.getByRole("button", { name: "Lưu map" }).click();
+  await expect(page.getByText(/Đã lưu map r2 và đồng bộ Map Flow r2/)).toBeVisible();
+
+  const savedNpc = api.active().npcs[0];
+  expect(savedNpc.id).toBe("elder");
+  expect(savedNpc.dialogue).toBe("Chào mừng tráng sĩ đến với bản làng.");
+  expect(savedNpc.dialogueChain).toHaveLength(3);
+  expect(savedNpc.dialogueChain?.[2].speaker).toBe("Người chơi");
+
+  await page.screenshot({ path: `${evidenceDir}/npc-multi-conversation-chain-pass.png`, fullPage: true });
 });
 
 test("portal point and entrypoint stay synchronized between Map and Map Flow", async ({ page }) => {

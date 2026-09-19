@@ -1,3 +1,5 @@
+import { congHuyenSuCards } from "../_data/cong-huyen-su-21-manh";
+
 export type CodexEntry = {
   id: string;
   title: string;
@@ -170,42 +172,22 @@ export const dungeonNpcs: DnNpc[] = [
   },
 ];
 
-export const codexEntries: CodexEntry[] = [
-  {
-    id: "vanlang-foundation",
-    title: "Bí kíp Buổi đầu dựng nước",
-    content: "Văn Lang thường được mô tả là một nhà nước sơ khai thời Hùng Vương, hình thành trên nền tảng văn hóa Đông Sơn vào khoảng thế kỷ VII-VI trước Công nguyên theo những nghiên cứu được phổ biến.",
-    source: "Bảo tàng Lịch sử Quốc gia và báo Nhân Dân (dữ liệu mock, cần hội đồng chuyên môn duyệt)",
-  },
-  {
-    id: "vanlang-organization",
-    title: "Bí kíp Cộng đồng Lạc Việt",
-    content: "Sử liệu thường nhắc đến Vua Hùng đứng đầu, cùng Lạc hầu, Lạc tướng và các bộ. Đây là dữ kiện để nhận diện tổ chức nhà nước sơ khai trong phó bản.",
-    source: "Báo Nhân Dân (dữ liệu mock, cần hội đồng chuyên môn duyệt)",
-  },
-  {
-    id: "vanlang-dongson",
-    title: "Bí kíp Trống đồng Đông Sơn",
-    content: "Các dấu tích văn hóa Đông Sơn, đặc biệt kỹ nghệ luyện đúc đồng, là chìa khóa để nhận diện bối cảnh vật chất của buổi đầu dựng nước.",
-    source: "Bảo tàng Lịch sử Quốc gia (dữ liệu mock, cần hội đồng chuyên môn duyệt)",
-  },
-  {
-    id: "vanlang-community",
-    title: "Bí kíp Sức mạnh cộng đồng",
-    content: "Sự hình thành Văn Lang gắn với nhu cầu liên kết cộng đồng, sản xuất và tổ chức đời sống. Hãy dùng dữ kiện này để liên hệ kiến thức với bối cảnh trong game.",
-    source: "Tổng hợp học liệu mock, chờ đội chuyên môn duyệt",
-  },
-];
+export const codexEntries: CodexEntry[] = congHuyenSuCards.map((card) => ({
+  id: card.knowledge_id,
+  title: card.title,
+  content: card.card_text,
+  source: `${card.source_type} · ${card.claim_status}`,
+}));
 
 export const dungeonQuests: DungeonQuest[] = [
   {
     id: "quest-guide-scroll",
-    title: "Nhận bí kíp khai mở",
-    description: "Gặp Sử quan Tuyên để nhận mảnh dữ kiện đầu tiên về sự ra đời của Văn Lang.",
+    title: "Giải mã phiến đá",
+    description: "Nhận 7 Bí Kíp, giải ấn 21 mảnh ký ức và ghép lại hình tượng Kinh Dương Vương.",
     type: "codex",
     npcId: "guide",
     requiredCodexIds: [],
-    rewardCodexIds: ["vanlang-foundation"],
+    rewardCodexIds: codexEntries.map((entry) => entry.id),
     rewardSouls: 50,
     rewardBattlePassXp: 15,
   },
@@ -215,8 +197,8 @@ export const dungeonQuests: DungeonQuest[] = [
     description: "Dùng bí kíp đã nhận để xác định đặc điểm phù hợp với bối cảnh Văn Lang.",
     type: "boss",
     npcId: "boss",
-    requiredCodexIds: ["vanlang-foundation"],
-    rewardCodexIds: ["vanlang-organization", "vanlang-dongson", "vanlang-community"],
+    requiredCodexIds: ["BK_01"],
+    rewardCodexIds: [],
     rewardSouls: 120,
     rewardBattlePassXp: 40,
     question: "Dữ kiện nào phù hợp nhất để nhận diện Văn Lang trong phó bản?",

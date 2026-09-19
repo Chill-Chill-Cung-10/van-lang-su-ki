@@ -9,9 +9,24 @@ const stageParamsSchema = z.object({
   code: z.string().min(1).max(10),
 });
 
+const stageQuerySchema = z.object({ poolSize: z.coerce.number().int().min(1).max(30).optional() });
+
 const answerBodySchema = z.object({
   questionId: z.string().min(1).max(50),
   selectedOptionIndex: z.number().int().min(0).max(3),
+});
+
+export function selectStageQuestions<T extends { difficultyLevel: string }>(stageQuestions: T[], distribution: Record<string, number>, count: number): T[] {
+  if (count > Object.values(distribution).reduce((sum, value) => sum + value, 0)) return stageQuestions.slice(0, count);
+  const selected: T[] = [];
+  for (const [level, amount] of Object.entries(distribution)) selected.push(...stageQuestions.filter((question) => question.difficultyLevel === level).slice(0, amount));
+  selected.push(...stageQuestions.filter((question) => !selected.includes(question)).slice(0, count - selected.length));
+  return selected.slice(0, count);
+}
+
+export const gradeQuestion = (correctOptionIndex: number, selectedOptionIndex: number, damage: number) => ({
+  isCorrect: selectedOptionIndex === correctOptionIndex,
+  damage: selectedOptionIndex === correctOptionIndex ? damage : 0,
 });
 
 export const questionRoutes: FastifyPluginAsync = async (app) => {
@@ -21,6 +36,8 @@ export const questionRoutes: FastifyPluginAsync = async (app) => {
     if (!params.success) {
       return reply.status(400).send({ message: "Mã ải không hợp lệ.", issues: params.error.issues });
     }
+    const query = stageQuerySchema.safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ message: "Kích thước pool không hợp lệ.", issues: query.error.issues });
 
     const db = getDb();
 
@@ -49,25 +66,8 @@ export const questionRoutes: FastifyPluginAsync = async (app) => {
 
     // Distribute by difficulty according to stage config
     const distribution = (stage.difficultyDistribution ?? {}) as Record<string, number>;
-    const selected: (typeof stageQuestions)[number][] = [];
-    const remaining: (typeof stageQuestions)[number][] = [];
-
-    for (const [level, count] of Object.entries(distribution)) {
-      const pool = stageQuestions.filter(
-        (q) => q.difficultyLevel === level && !selected.includes(q),
-      );
-      selected.push(...pool.slice(0, count));
-    }
-
-    // Fill remaining slots if distribution didn't fill questionsPerRun
-    if (selected.length < stage.questionsPerRun) {
-      for (const q of stageQuestions) {
-        if (!selected.includes(q)) {
-          remaining.push(q);
-        }
-      }
-      selected.push(...remaining.slice(0, stage.questionsPerRun - selected.length));
-    }
+    const requestedCount = query.data.poolSize ?? stage.questionsPerRun;
+    const selected = selectStageQuestions(stageQuestions, distribution, requestedCount);
 
     // Strip correct answer for client — don't leak correct_option_index
     const clientQuestions = selected.map((q) => ({
@@ -113,8 +113,7 @@ export const questionRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(404).send({ message: "Không tìm thấy câu hỏi." });
     }
 
-    const isCorrect = parsed.data.selectedOptionIndex === question.correctOptionIndex;
-    const damage = isCorrect ? question.damage : 0;
+    const { isCorrect, damage } = gradeQuestion(question.correctOptionIndex, parsed.data.selectedOptionIndex, question.damage);
     const feedback = question.feedbacks?.[parsed.data.selectedOptionIndex] ?? "";
 
     // Record learning attempt

@@ -1,5 +1,5 @@
 import { MapDocumentSchema, MapFlowDocumentSchemaV1, upgradeMapDocument, type MapDocument, type MapFlowDocument, type Vec2 } from "./map-document.js";
-import { isPositionValid, polygonArea, polygonSelfIntersects } from "./collision.js";
+import { colliderFootprint, distanceToPolygonEdges, isPositionValid, pointInPolygon, polygonArea, polygonSelfIntersects } from "./collision.js";
 
 export type MapValidationIssue = { code: string; path: string; message: string; mapId?: string; objectId?: string; npcId?: string; polygonId?: string; portalId?: string };
 
@@ -43,7 +43,36 @@ export function validateMapDocument(input: unknown): { success: true; document: 
     polygonIds.add(polygon.id);
     issues.push(...polygonIssues(polygon.points, `navigation.walkablePolygons.${index}.points`, polygon.id));
   });
-  if (issues.length === 0 && !isPositionValid(document, document.navigation.spawn)) issues.push({ code: "INVALID_SPAWN", path: "navigation.spawn", message: "Điểm spawn không nằm trong vùng hợp lệ." });
+  const hasGeometryErrors = issues.some((i) => i.code === "DEGENERATE_POLYGON" || i.code === "SELF_INTERSECTING_POLYGON" || i.code === "DUPLICATE_ADJACENT_POINT");
+  if (!hasGeometryErrors && !isPositionValid(document, document.navigation.spawn)) {
+    const radius = document.navigation.playerRadius;
+    const walkable = document.navigation.walkablePolygons.filter((polygon) => polygon.enabled);
+    let detail = "không nằm trong vùng đi lại";
+    if (!walkable.length) {
+      detail = "bản đồ chưa có vùng đi lại (Walkable Area) nào được kích hoạt";
+    } else if (!walkable.some((p) => pointInPolygon(document.navigation.spawn, p.points))) {
+      detail = "nằm hoàn toàn ngoài các vùng đi lại";
+    } else {
+      const collidingObject = document.objects.find((obj) => {
+        const fp = colliderFootprint(obj);
+        if (!fp) return false;
+        if (fp.type === "circle") {
+          return Math.hypot(document.navigation.spawn.x - fp.center.x, document.navigation.spawn.z - fp.center.z) <= fp.radius + radius + 1e-6;
+        }
+        return pointInPolygon(document.navigation.spawn, fp.points) || distanceToPolygonEdges(document.navigation.spawn, fp.points) <= radius + 1e-6;
+      });
+      if (collidingObject) {
+        detail = `va chạm hoặc quá gần vật cản "${collidingObject.name}" (cần cách tối thiểu ${radius}m)`;
+      } else {
+        detail = `quá sát mép vùng đi lại (cần cách mép tối thiểu ${radius}m - bán kính nhân vật)`;
+      }
+    }
+    issues.push({
+      code: "INVALID_SPAWN",
+      path: "navigation.spawn",
+      message: `Điểm spawn không hợp lệ (${detail}). Vị trí cho phép: phải nằm hoàn toàn trong vùng Walkable (xanh lá) và cách vật cản/mép tối thiểu ${radius}m.`,
+    });
+  }
   const entryIds = new Set<string>();
   document.navigation.entryPoints.forEach((entry, index) => {
     if (entryIds.has(entry.id)) issues.push({ code: "DUPLICATE_ENTRY_POINT_ID", path: `navigation.entryPoints.${index}.id`, message: "ID entry point phải duy nhất." });

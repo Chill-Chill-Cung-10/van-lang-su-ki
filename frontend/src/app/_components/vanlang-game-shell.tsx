@@ -6,9 +6,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VanlangCinematicLoader } from "./vanlang-cinematic-loader";
 import { VanlangDungeonScreen } from "./vanlang-dungeon-screen";
 import { VanlangDungeonWorld } from "./vanlang-dungeon-world";
+import { readPuzzleSave, type StonePuzzleSave } from "./kinh-duong-vuong-puzzle";
 import type { DungeonDrawer } from "./vanlang-dungeon-screen";
-import { loadFlowMap, loadRuntimeMap } from "../_lib/map-api-client";
-import { DUNGEON_SPAWN, npcPositionFromDocument, projectToNavmesh } from "./vanlang-navmesh";
+import { listMaps, loadFlowMap, loadRuntimeMap } from "../_lib/map-api-client";
+import { DUNGEON_SPAWN, type NavPoint, npcPositionFromDocument, projectToNavmesh } from "./vanlang-navmesh";
 import { VanlangWorldMap } from "./vanlang-world-map";
 import "./vanlang-game-shell.css";
 import {
@@ -50,6 +51,7 @@ type ProgressState = {
   battlePassXp: number;
   soundEnabled: boolean;
   musicEnabled: boolean;
+  completedNpcDialogueIds: string[];
 };
 
 const STORAGE_KEY = "vanlang-game-mock-v4";
@@ -70,6 +72,7 @@ const DEFAULT_STATE: ProgressState = {
   battlePassXp: 0,
   soundEnabled: true,
   musicEnabled: true,
+  completedNpcDialogueIds: [],
 };
 
 
@@ -77,13 +80,17 @@ const textToPercent = (current: number, total: number) => Math.round((current / 
 
 const rewardDisplay = (value: number) => `${value} linh hồn`;
 const addUnique = (arr: string[], value: string) => (arr.includes(value) ? arr : [...arr, value]);
+const isLacNhi = (name: string) => name.trim().toLocaleLowerCase("vi") === "lạc nhi";
+const npcDialogueKey = (mapId: string, npcId: string) => `${mapId}:${npcId}`;
 
 export default function VanlangGameShell({
   accountId,
+  accountName,
   initialScreen,
   onBackToMenu,
 }: {
   accountId: string;
+  accountName: string;
   initialScreen?: GameScreen;
   onBackToMenu: () => void;
 }) {
@@ -118,6 +125,9 @@ export default function VanlangGameShell({
   const [isPlayerMoving, setIsPlayerMoving] = useState(false);
   const [playerFacing, setPlayerFacing] = useState(Math.PI);
   const [dungeonDrawer, setDungeonDrawer] = useState<DungeonDrawer>(null);
+  const [stonePuzzleOpen, setStonePuzzleOpen] = useState(false);
+  const [rewardRevealOpen, setRewardRevealOpen] = useState(false);
+  const [stonePuzzleSave, setStonePuzzleSave] = useState<StonePuzzleSave>(() => readPuzzleSave(accountId));
   const [rebirthComplete, setRebirthComplete] = useState(() =>
     typeof window !== "undefined" && window.localStorage.getItem(`vanlang-rebirth-seen:${accountId}`) === "true",
   );
@@ -126,6 +136,7 @@ export default function VanlangGameShell({
   const [mapDocument, setMapDocument] = useState<MapDocument | null>(null);
   const [mapFallbackActive, setMapFallbackActive] = useState(false);
   const [mapLoadError, setMapLoadError] = useState("");
+  const [portalMapNames, setPortalMapNames] = useState<Record<string, string>>(() => Object.fromEntries(mapDungeons.map((map) => [map.id, map.name])));
   const [transition, setTransition] = useState<PortalTransition>({ phase: "idle", error: "", portal: null, pending: null, sourcePosition: null });
   const latestStateRef = useRef(state);
   const transitionToken = useRef(0);
@@ -134,6 +145,18 @@ export default function VanlangGameShell({
   const cooldownUntil = useRef(0);
   const insidePortals = useRef(new Set<string>());
   const portalMapRef = useRef<string | null>(null);
+  const pendingEntryPointId = useRef<string | null>(null);
+  const shouldSpawnAtDefaultSpawn = useRef<boolean>(true);
+  const suppressedPortals = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (state.screen !== "dungeon") return;
+    let cancelled = false;
+    void listMaps().then((maps) => {
+      if (!cancelled) setPortalMapNames((current) => ({ ...current, ...Object.fromEntries(maps.map((map) => [map.mapId, map.name])) }));
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [state.screen]);
 
   const ambientTimer = useRef<number | null>(null);
   const movementTimer = useRef<number | null>(null);
@@ -149,6 +172,17 @@ export default function VanlangGameShell({
   const npcGuide = useMemo(() => dungeonNpcs.find((npc) => npc.role === "guide"), []);
   const npcBoss = useMemo(() => dungeonNpcs.find((npc) => npc.role === "boss"), []);
   const activeMap = useMemo(() => mapDungeons.find((map) => map.id === state.selectedMap) ?? mapDungeons[0], [state.selectedMap]);
+  const lacNhiDialogueCompleted = useMemo(() => {
+    const lacNhi = mapDocument?.npcs.find((npc) => isLacNhi(npc.name));
+    return Boolean(mapDocument && lacNhi && state.completedNpcDialogueIds.includes(npcDialogueKey(mapDocument.mapId, lacNhi.id)));
+  }, [mapDocument, state.completedNpcDialogueIds]);
+  const activePortals = useMemo(() => {
+    if (!mapDocument) return [];
+    if (mapDocument.npcs.some((npc) => isLacNhi(npc.name)) && !lacNhiDialogueCompleted) return [];
+    return mapDocument.portals.filter((portal) =>
+      mapDocument.mapId !== "map2" || portal.target.mapId !== "cong-vien-chinh" || stonePuzzleSave.completed,
+    );
+  }, [lacNhiDialogueCompleted, mapDocument, stonePuzzleSave.completed]);
   const bossRequirementsMet = useMemo(() => {
     if (!bossQuest) return false;
     return bossQuest.requiredCodexIds.every((id) => state.unlockedCodexIds.includes(id));
@@ -198,8 +232,9 @@ export default function VanlangGameShell({
     setTransition({ phase: "loading", error: "", portal, pending: null, sourcePosition });
     void loadFlowMap("vanlang", portal.target.mapId, controller.signal).then((target) => {
       if (token !== transitionToken.current) return;
-      const entry = target.document.navigation.entryPoints.find((item) => item.id === portal.target.entryPointId);
-      if (!entry) throw new Error("PORTAL_ENTRY_POINT_NOT_FOUND");
+      const entry = target.document.navigation.entryPoints.find((item) => item.id === portal.target.entryPointId)
+        ?? target.document.navigation.entryPoints[0]
+        ?? { id: "default", position: { ...target.document.navigation.spawn }, facingDeg: 0 };
       setTransition({ phase: "loading", error: "", portal, pending: { token, targetMapId: target.mapId, document: target.document, entry }, sourcePosition });
     }).catch((caught) => {
       if (controller.signal.aborted || token !== transitionToken.current) return;
@@ -222,16 +257,39 @@ export default function VanlangGameShell({
     const pending = transition.pending;
     if (!pending || pending.token !== transitionToken.current) return;
     transitionLoading.current = false;
-    const playerPos = { x: pending.entry.position.x, y: pending.entry.position.z };
+    const sourceMapId = mapDocument?.mapId ?? null;
+
+    // Tìm portal đón trên map đích trỏ về sourceMapId
+    const returnPortal = pending.document.portals.find(
+      (p) => p.enabled && p.target.mapId === sourceMapId
+    );
+
+    // Ưu tiên đặt nhân vật xuất hiện ngay tại Portal point của map đích
+    const playerPos = returnPortal
+      ? { x: returnPortal.trigger.center.x, y: returnPortal.trigger.center.z }
+      : { x: pending.entry.position.x, y: pending.entry.position.z };
+
+    // Tự động bỏ qua cổng chiều về để tránh giật lặp teleport khi vừa xuất hiện
+    const arrivalSuppressed = new Set<string>();
+    for (const p of pending.document.portals) {
+      if (!p.enabled) continue;
+      const dist = Math.hypot(playerPos.x - p.trigger.center.x, playerPos.y - p.trigger.center.z);
+      if (dist <= p.trigger.radius + 0.4 && p.target.mapId === sourceMapId) {
+        arrivalSuppressed.add(p.id);
+      }
+    }
+    suppressedPortals.current = arrivalSuppressed;
+    insidePortals.current = new Set(arrivalSuppressed);
+    portalMapRef.current = pending.targetMapId;
+
     setMapDocument(pending.document);
     setMapFallbackActive(false);
     setDialog(null); setDungeonDrawer(null); setIsPlayerMoving(false);
     setPlayerFacing(pending.entry.facingDeg * Math.PI / 180);
     persist((current) => ({ ...current, selectedMap: pending.targetMapId, playerPos }));
-    cooldownUntil.current = Date.now() + 500;
-    insidePortals.current = new Set();
+    cooldownUntil.current = Date.now() + 400;
     setTransition({ phase: "cooldown", error: "", portal: null, pending: null, sourcePosition: null });
-  }, [persist, transition.pending]);
+  }, [mapDocument?.mapId, persist, transition.pending]);
 
   useEffect(() => {
     if (state.screen !== "dungeon" || !state.selectedMap) return;
@@ -239,10 +297,26 @@ export default function VanlangGameShell({
     const load = loadFlowMap("vanlang", state.selectedMap).then((envelope) => ({ document: envelope.document, fallback: false })).catch((error) => state.selectedMap === "vanlang" ? loadRuntimeMap("vanlang") : Promise.reject(error));
     void load.then((loaded) => {
       if (cancelled) return;
+      const entryPointId = pendingEntryPointId.current;
+      const entry = entryPointId ? loaded.document.navigation.entryPoints.find((item) => item.id === entryPointId) : null;
+      let requestedPosition: NavPoint;
+      if (entry) {
+        // Chỉ xuất hiện tại entrypoint khi có chỉ định cụ thể từ portal transition
+        requestedPosition = { x: entry.position.x, y: entry.position.z };
+      } else if (shouldSpawnAtDefaultSpawn.current || !latestStateRef.current.playerPos) {
+        // Mới vào game / mới vào phó bản: BẮT BUỘC xuất hiện tại Spawn Point (navigation.spawn), không dùng portal point!
+        requestedPosition = { x: loaded.document.navigation.spawn.x, y: loaded.document.navigation.spawn.z };
+        shouldSpawnAtDefaultSpawn.current = false;
+      } else {
+        // Tiếp tục phiên chơi dở: giữ nguyên vị trí hiện tại
+        requestedPosition = { x: latestStateRef.current.playerPos.x, y: latestStateRef.current.playerPos.y };
+      }
+      const projected = projectToNavmesh(requestedPosition, loaded.document);
+      pendingEntryPointId.current = null;
       setMapLoadError("");
       setMapDocument(loaded.document);
       setMapFallbackActive(loaded.fallback);
-      const projected = projectToNavmesh(latestStateRef.current.playerPos, loaded.document);
+      setPlayerFacing((entry?.facingDeg ?? loaded.document.navigation.spawnFacingDeg) * Math.PI / 180);
       if (projected.x !== latestStateRef.current.playerPos.x || projected.y !== latestStateRef.current.playerPos.y) persist((current) => ({ ...current, playerPos: projected }));
     }).catch((caught) => { if (!cancelled) setMapLoadError(caught instanceof Error ? caught.message : "Không thể tải map."); });
     return () => { cancelled = true; };
@@ -250,20 +324,29 @@ export default function VanlangGameShell({
 
   useEffect(() => {
     if (!mapDocument || state.screen !== "dungeon") return;
-    const current = new Set(mapDocument.portals.filter((portal) => portal.enabled && Math.hypot(state.playerPos.x - portal.trigger.center.x, state.playerPos.y - portal.trigger.center.z) <= portal.trigger.radius).map((portal) => portal.id));
+    const current = new Set(activePortals.filter((portal) => portal.enabled && Math.hypot(state.playerPos.x - portal.trigger.center.x, state.playerPos.y - portal.trigger.center.z) <= portal.trigger.radius).map((portal) => portal.id));
     if (portalMapRef.current !== mapDocument.mapId) {
       portalMapRef.current = mapDocument.mapId;
-      insidePortals.current = current;
+      insidePortals.current = new Set([...insidePortals.current, ...current]);
       return;
     }
+
+    // Clean up suppressed portals once the character steps away from them
+    for (const id of Array.from(suppressedPortals.current)) {
+      if (!current.has(id)) {
+        suppressedPortals.current.delete(id);
+      }
+    }
+
     if (transition.phase === "cooldown") {
-      if (Date.now() >= cooldownUntil.current && current.size === 0) setTransition({ phase: "idle", error: "", portal: null, pending: null, sourcePosition: null });
+      if (Date.now() >= cooldownUntil.current) setTransition({ phase: "idle", error: "", portal: null, pending: null, sourcePosition: null });
     } else if (transition.phase === "idle") {
-      const entered = mapDocument.portals.find((portal) => portal.enabled && current.has(portal.id) && !insidePortals.current.has(portal.id));
+      // Find newly entered portal that is NOT currently suppressed
+      const entered = activePortals.find((portal) => portal.enabled && current.has(portal.id) && !insidePortals.current.has(portal.id) && !suppressedPortals.current.has(portal.id));
       if (entered) beginPortalTransition(entered);
     }
     insidePortals.current = current;
-  }, [beginPortalTransition, mapDocument, state.playerPos.x, state.playerPos.y, state.screen, transition.phase]);
+  }, [activePortals, beginPortalTransition, mapDocument, state.playerPos.x, state.playerPos.y, state.screen, transition.phase]);
 
   useEffect(() => () => { transitionLoading.current = false; transitionAbort.current?.abort(); transitionToken.current += 1; }, []);
 
@@ -327,7 +410,7 @@ export default function VanlangGameShell({
     return stopAmbient;
   }, [state.musicEnabled, state.soundEnabled, startAmbient, stopAmbient]);
 
-  const movementLocked = Boolean(dialog || dungeonDrawer || !rebirthComplete || transition.phase === "loading");
+  const movementLocked = Boolean(dialog || dungeonDrawer || stonePuzzleOpen || !rebirthComplete || transition.phase === "loading");
   const movePlayer = useCallback(
     (dx: number, dy: number, step = MOVEMENT_STEP, saveImmediately = true) => {
       if (movementLocked) return;
@@ -415,13 +498,21 @@ export default function VanlangGameShell({
     };
   }, [mapDocument, npcBoss, npcGuide, npcTimekeeper, state.playerPos.x, state.playerPos.y]);
   const nearbyGenericNpc = useMemo(() => mapDocument?.npcs
+    .filter((npc) => npc.id !== "kinh-duong-vuong" || stonePuzzleSave.completed)
     .map((npc) => ({ npc, distance: Math.hypot(npc.transform.position.x - state.playerPos.x, npc.transform.position.z - state.playerPos.y) }))
     .filter((item) => item.distance <= 1.25)
-    .sort((a, b) => a.distance - b.distance || a.npc.id.localeCompare(b.npc.id))[0]?.npc ?? null, [mapDocument, state.playerPos.x, state.playerPos.y]);
+    .sort((a, b) => a.distance - b.distance || a.npc.id.localeCompare(b.npc.id))[0]?.npc ?? null, [mapDocument, state.playerPos.x, state.playerPos.y, stonePuzzleSave.completed]);
+  const stoneNearby = useMemo(() => {
+    if (mapDocument?.mapId !== "map2" || stonePuzzleSave.completed) return false;
+    const stone = mapDocument.objects.find((object) => object.id === "kinh-duong-vuong-stone");
+    return Boolean(stone?.kind === "model3d" && Math.hypot(stone.transform3d.position.x - state.playerPos.x, stone.transform3d.position.z - state.playerPos.y) <= 1.35);
+  }, [mapDocument, state.playerPos.x, state.playerPos.y, stonePuzzleSave.completed]);
   const nearbyNpcForPrompt: Npc | MapNpc | null = nearbyNpc.timekeeper ?? nearbyNpc.guide ?? nearbyNpc.mentor ?? nearbyNpc.boss ?? nearbyGenericNpc;
 
   const interact = useCallback(() => {
     if (state.screen !== "dungeon") return;
+
+    if (stoneNearby) { setStonePuzzleOpen(true); return; }
 
     if (nearbyNpc.timekeeper) {
       setDialog({ kind: "timekeeper" });
@@ -453,7 +544,9 @@ export default function VanlangGameShell({
       setDialog({ kind: "generic", npcId: nearbyGenericNpc.id });
       playTone(710, 60);
     }
-  }, [bossQuest, guideQuest, nearbyGenericNpc, nearbyNpc.boss, nearbyNpc.guide, nearbyNpc.timekeeper, nearbyNpc.mentor, playTone, state.screen]);
+  }, [bossQuest, guideQuest, nearbyGenericNpc, nearbyNpc.boss, nearbyNpc.guide, nearbyNpc.timekeeper, nearbyNpc.mentor, playTone, state.screen, stoneNearby]);
+
+  const handlePuzzleProgress = useCallback((save: StonePuzzleSave) => setStonePuzzleSave(save), []);
 
   const enterVanLang = useCallback(() => {
     setIsVanLangLoading(true);
@@ -461,11 +554,14 @@ export default function VanlangGameShell({
   }, [playTone]);
 
   const completeVanLangLoading = useCallback(() => {
-    persist((prev) => ({ ...prev, selectedMap: "vanlang", screen: "dungeon", playerPos: DUNGEON_SPAWN }));
+    pendingEntryPointId.current = null;
+    shouldSpawnAtDefaultSpawn.current = true;
+    const spawnPos = mapDocument ? { x: mapDocument.navigation.spawn.x, y: mapDocument.navigation.spawn.z } : DUNGEON_SPAWN;
+    persist((prev) => ({ ...prev, selectedMap: "vanlang", screen: "dungeon", playerPos: spawnPos }));
     setDialog(null);
     setDungeonDrawer(null);
     setIsVanLangLoading(false);
-  }, [persist]);
+  }, [mapDocument, persist]);
 
   const moveToMap = useCallback(() => {
     setDialog(null);
@@ -483,6 +579,7 @@ export default function VanlangGameShell({
 
     completeQuest(guideQuest);
     setDialog(null);
+    setRewardRevealOpen(true);
   }, [completeQuest, guideQuest, isQuestCompleted]);
 
   const answerBoss = useCallback(
@@ -512,6 +609,7 @@ export default function VanlangGameShell({
 
   const clearBoard = useCallback(() => {
     setDungeonDrawer(null);
+    shouldSpawnAtDefaultSpawn.current = true;
     const spawn = mapDocument ? { x: mapDocument.navigation.spawn.x, y: mapDocument.navigation.spawn.z } : DUNGEON_SPAWN;
     persist((prev) => ({ ...prev, selectedMap: activeMap.id, playerPos: spawn }));
   }, [activeMap.id, mapDocument, persist]);
@@ -666,11 +764,19 @@ export default function VanlangGameShell({
       <VanlangDungeonScreen
         mapDocument={mapDocument}
         mapFallbackActive={mapFallbackActive}
-        mapName={activeMap?.name ?? state.selectedMap ?? "Map"}
+        mapName={mapDocument.metadata.name || activeMap?.name || state.selectedMap || "Map"}
+        portalMapNames={portalMapNames}
+        activePortals={activePortals}
+        lacNhiDialogueCompleted={lacNhiDialogueCompleted}
         playerPos={state.playerPos}
         facing={playerFacing}
         isMoving={isPlayerMoving}
         character={selectedCharacter}
+        accountId={accountId}
+        accountName={accountName}
+        stoneNearby={stoneNearby}
+        stonePuzzleOpen={stonePuzzleOpen}
+        puzzleCompleted={stonePuzzleSave.completed}
         nearbyNpc={nearbyNpcForPrompt ?? null}
         rebirthRequired={!rebirthComplete}
         rebirthText={npcTimekeeper?.dialogue ?? ""}
@@ -685,16 +791,42 @@ export default function VanlangGameShell({
         bossRequirementsMet={bossRequirementsMet}
         onMove={movePlayer}
         onInteract={interact}
+        onCloseStonePuzzle={() => setStonePuzzleOpen(false)}
+        onPuzzleProgress={handlePuzzleProgress}
         onCompleteRebirth={completeRebirth}
+        onCompleteGenericDialog={(npcId) => {
+          const key = npcDialogueKey(mapDocument.mapId, npcId);
+          persist((current) => ({ ...current, completedNpcDialogueIds: addUnique(current.completedNpcDialogueIds, key) }));
+          setDialog(null);
+        }}
         onCloseDialog={() => setDialog(null)}
         onOpenDrawer={setDungeonDrawer}
         onReset={clearBoard}
         onExit={moveToMap}
         onCollectGuideCodex={collectGuideCodex}
+        rewardRevealOpen={rewardRevealOpen}
+        onCloseRewardReveal={() => setRewardRevealOpen(false)}
         onAnswerBoss={answerBoss}
       />
-      {transition.pending ? <div className="portal-preload" aria-hidden="true"><VanlangDungeonWorld mapDocument={transition.pending.document} playerPos={{ x: transition.pending.entry.position.x, y: transition.pending.entry.position.z }} facing={transition.pending.entry.facingDeg * Math.PI / 180} isMoving={false} onSceneReady={commitPendingTransition} onSceneError={failPendingTransition} /></div> : null}
-      {transition.phase === "loading" ? <div className="portal-transition-overlay" role="status">Đang tải map đích… Input đã khóa.</div> : null}
+      {transition.pending ? <div className="portal-preload" aria-hidden="true"><VanlangDungeonWorld mapDocument={transition.pending.document} portalMapNames={portalMapNames} playerPos={{ x: transition.pending.entry.position.x, y: transition.pending.entry.position.z }} facing={transition.pending.entry.facingDeg * Math.PI / 180} isMoving={false} onSceneReady={commitPendingTransition} onSceneError={failPendingTransition} /></div> : null}
+      {transition.phase === "loading" ? (
+        <div className="portal-transition-overlay" role="status" aria-live="polite">
+          <div className="portal-transition-card">
+            <div className="portal-transition-crest">
+              <svg viewBox="0 0 24 24" className="portal-transition-sun" aria-hidden="true">
+                <circle cx="12" cy="12" r="3.2" fill="#ffd978" />
+                <path d="M12 2 L13.2 8.5 L19 4 L15.5 9.8 L22 12 L15.5 14.2 L19 20 L13.2 15.5 L12 22 L10.8 15.5 L5 20 L8.5 14.2 L2 12 L8.5 9.8 L5 4 L10.8 8.5 Z" fill="#f5cf83" />
+              </svg>
+            </div>
+            <span className="portal-transition-kicker">KHAI MỞ LINH MÔN</span>
+            <h3 className="portal-transition-destination">
+              Đang tiến nhập « {transition.portal ? (portalMapNames[transition.portal.target.mapId] ?? transition.portal.target.mapId) : "Vùng Đất Mới"} »
+            </h3>
+            <div className="portal-transition-spinner" aria-hidden="true" />
+            <p className="portal-transition-subtext">Hồn phách chuyển dịch qua dòng thời gian…</p>
+          </div>
+        </div>
+      ) : null}
       {transition.error ? <div className="portal-transition-error" role="alert"><span>{transition.error}. Bạn vẫn ở map nguồn.</span><button onClick={() => transition.portal && beginPortalTransition(transition.portal)}>Thử lại</button></div> : null}
       </>
     );

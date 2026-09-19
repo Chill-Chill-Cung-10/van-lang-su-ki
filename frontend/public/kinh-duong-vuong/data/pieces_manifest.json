@@ -1,0 +1,451 @@
+{
+  "source": "a2bc9a54-d7ef-5a45-b64b-9e6ffbf99650.png",
+  "source_size": [
+    1008,
+    1232
+  ],
+  "note": "All 21 disconnected stone components including the top-center Kinh Duong Vuong head/portrait.",
+  "assets": [
+    {
+      "id": "piece_01",
+      "file": "piece_01.png",
+      "row": 1,
+      "source_bbox": [
+        23,
+        20,
+        263,
+        298
+      ],
+      "content_bbox": [
+        37,
+        34,
+        249,
+        284
+      ],
+      "size": [
+        240,
+        278
+      ]
+    },
+    {
+      "id": "piece_02",
+      "file": "piece_02.png",
+      "row": 1,
+      "source_bbox": [
+        291,
+        24,
+        440,
+        297
+      ],
+      "content_bbox": [
+        305,
+        38,
+        426,
+        283
+      ],
+      "size": [
+        149,
+        273
+      ]
+    },
+    {
+      "id": "piece_03",
+      "file": "piece_03.png",
+      "row": 1,
+      "source_bbox": [
+        418,
+        0,
+        595,
+        298
+      ],
+      "content_bbox": [
+        432,
+        0,
+        581,
+        284
+      ],
+      "size": [
+        177,
+        298
+      ]
+    },
+    {
+      "id": "piece_04",
+      "file": "piece_04.png",
+      "row": 1,
+      "source_bbox": [
+        573,
+        23,
+        718,
+        297
+      ],
+      "content_bbox": [
+        587,
+        37,
+        704,
+        283
+      ],
+      "size": [
+        145,
+        274
+      ]
+    },
+    {
+      "id": "piece_05",
+      "file": "piece_05.png",
+      "row": 1,
+      "source_bbox": [
+        744,
+        21,
+        984,
+        297
+      ],
+      "content_bbox": [
+        758,
+        35,
+        970,
+        283
+      ],
+      "size": [
+        240,
+        276
+      ]
+    },
+    {
+      "id": "piece_06",
+      "file": "piece_06.png",
+      "row": 2,
+      "source_bbox": [
+        18,
+        292,
+        274,
+        523
+      ],
+      "content_bbox": [
+        32,
+        306,
+        260,
+        509
+      ],
+      "size": [
+        256,
+        231
+      ]
+    },
+    {
+      "id": "piece_07",
+      "file": "piece_07.png",
+      "row": 2,
+      "source_bbox": [
+        278,
+        289,
+        507,
+        518
+      ],
+      "content_bbox": [
+        292,
+        303,
+        493,
+        504
+      ],
+      "size": [
+        229,
+        229
+      ]
+    },
+    {
+      "id": "piece_08",
+      "file": "piece_08.png",
+      "row": 2,
+      "source_bbox": [
+        520,
+        289,
+        737,
+        517
+      ],
+      "content_bbox": [
+        534,
+        303,
+        723,
+        503
+      ],
+      "size": [
+        217,
+        228
+      ]
+    },
+    {
+      "id": "piece_09",
+      "file": "piece_09.png",
+      "row": 2,
+      "source_bbox": [
+        736,
+        293,
+        987,
+        523
+      ],
+      "content_bbox": [
+        750,
+        307,
+        973,
+        509
+      ],
+      "size": [
+        251,
+        230
+      ]
+    },
+    {
+      "id": "piece_10",
+      "file": "piece_10.png",
+      "row": 3,
+      "source_bbox": [
+        3,
+        520,
+        263,
+        724
+      ],
+      "content_bbox": [
+        17,
+        534,
+        249,
+        710
+      ],
+      "size": [
+        260,
+        204
+      ]
+    },
+    {
+      "id": "piece_11",
+      "file": "piece_11.png",
+      "row": 3,
+      "source_bbox": [
+        260,
+        505,
+        496,
+        721
+      ],
+      "content_bbox": [
+        274,
+        519,
+        482,
+        707
+      ],
+      "size": [
+        236,
+        216
+      ]
+    },
+    {
+      "id": "piece_12",
+      "file": "piece_12.png",
+      "row": 3,
+      "source_bbox": [
+        513,
+        504,
+        743,
+        715
+      ],
+      "content_bbox": [
+        527,
+        518,
+        729,
+        701
+      ],
+      "size": [
+        230,
+        211
+      ]
+    },
+    {
+      "id": "piece_13",
+      "file": "piece_13.png",
+      "row": 3,
+      "source_bbox": [
+        747,
+        517,
+        1004,
+        724
+      ],
+      "content_bbox": [
+        761,
+        531,
+        990,
+        710
+      ],
+      "size": [
+        257,
+        207
+      ]
+    },
+    {
+      "id": "piece_14",
+      "file": "piece_14.png",
+      "row": 4,
+      "source_bbox": [
+        19,
+        712,
+        242,
+        961
+      ],
+      "content_bbox": [
+        33,
+        726,
+        228,
+        947
+      ],
+      "size": [
+        223,
+        249
+      ]
+    },
+    {
+      "id": "piece_15",
+      "file": "piece_15.png",
+      "row": 4,
+      "source_bbox": [
+        243,
+        706,
+        525,
+        962
+      ],
+      "content_bbox": [
+        257,
+        720,
+        511,
+        948
+      ],
+      "size": [
+        282,
+        256
+      ]
+    },
+    {
+      "id": "piece_16",
+      "file": "piece_16.png",
+      "row": 4,
+      "source_bbox": [
+        517,
+        706,
+        762,
+        960
+      ],
+      "content_bbox": [
+        531,
+        720,
+        748,
+        946
+      ],
+      "size": [
+        245,
+        254
+      ]
+    },
+    {
+      "id": "piece_17",
+      "file": "piece_17.png",
+      "row": 4,
+      "source_bbox": [
+        764,
+        712,
+        989,
+        961
+      ],
+      "content_bbox": [
+        778,
+        726,
+        975,
+        947
+      ],
+      "size": [
+        225,
+        249
+      ]
+    },
+    {
+      "id": "piece_18",
+      "file": "piece_18.png",
+      "row": 5,
+      "source_bbox": [
+        0,
+        957,
+        253,
+        1218
+      ],
+      "content_bbox": [
+        6,
+        971,
+        239,
+        1204
+      ],
+      "size": [
+        253,
+        261
+      ]
+    },
+    {
+      "id": "piece_19",
+      "file": "piece_19.png",
+      "row": 5,
+      "source_bbox": [
+        249,
+        950,
+        501,
+        1218
+      ],
+      "content_bbox": [
+        263,
+        964,
+        487,
+        1204
+      ],
+      "size": [
+        252,
+        268
+      ]
+    },
+    {
+      "id": "piece_20",
+      "file": "piece_20.png",
+      "row": 5,
+      "source_bbox": [
+        505,
+        949,
+        755,
+        1218
+      ],
+      "content_bbox": [
+        519,
+        963,
+        741,
+        1204
+      ],
+      "size": [
+        250,
+        269
+      ]
+    },
+    {
+      "id": "piece_21",
+      "file": "piece_21.png",
+      "row": 5,
+      "source_bbox": [
+        750,
+        957,
+        1008,
+        1218
+      ],
+      "content_bbox": [
+        764,
+        971,
+        998,
+        1204
+      ],
+      "size": [
+        258,
+        261
+      ]
+    }
+  ]
+}

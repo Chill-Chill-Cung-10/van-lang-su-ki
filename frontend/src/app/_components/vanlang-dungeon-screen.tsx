@@ -1,9 +1,10 @@
 "use client";
 
-import type { MapDocument, MapObject } from "@van-lang/map-contract";
+import { getNpcDialogueChain, type MapDocument, type MapObject } from "@van-lang/map-contract";
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { KinhDuongVuongPuzzle, type StonePuzzleSave } from "./kinh-duong-vuong-puzzle";
 import type { ReactNode } from "react";
 import type { DnNpc, PlayerCharacter } from "./vanlang-mock-data";
 import { codexEntries, dungeonNpcs, dungeonQuests } from "./vanlang-mock-data";
@@ -45,11 +46,19 @@ type DungeonScreenProps = {
   mapDocument: MapDocument;
   mapFallbackActive: boolean;
   mapName: string;
+  portalMapNames: Record<string, string>;
+  activePortals: MapDocument["portals"];
+  lacNhiDialogueCompleted: boolean;
   playerPos: { x: number; y: number };
   facing: number;
   isMoving: boolean;
   character: PlayerCharacter;
   nearbyNpc: Pick<DnNpc, "id" | "name"> | null;
+  accountId: string;
+  accountName: string;
+  stoneNearby: boolean;
+  stonePuzzleOpen: boolean;
+  puzzleCompleted: boolean;
   rebirthRequired: boolean;
   rebirthText: string;
   dialog: DungeonDialogState;
@@ -63,12 +72,17 @@ type DungeonScreenProps = {
   bossRequirementsMet: boolean;
   onMove: (dx: number, dy: number) => void;
   onInteract: () => void;
+  onCloseStonePuzzle: () => void;
+  onPuzzleProgress: (save: StonePuzzleSave) => void;
   onCompleteRebirth: () => void;
+  onCompleteGenericDialog: (npcId: string) => void;
   onCloseDialog: () => void;
   onOpenDrawer: (drawer: DungeonDrawer) => void;
   onReset: () => void;
   onExit: () => void;
   onCollectGuideCodex: () => void;
+  rewardRevealOpen: boolean;
+  onCloseRewardReveal: () => void;
   onAnswerBoss: (index: number) => void;
 };
 
@@ -83,10 +97,11 @@ function Icon({ name }: { name: "scroll" | "book" | "reward" | "gate" | "hand" }
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={paths[name]} /></svg>;
 }
 
-function WuxiaDialogue({ speaker, children, actions }: { speaker: string; children: ReactNode; actions: ReactNode }) {
+function WuxiaDialogue({ speaker, portraitSrc, children, actions }: { speaker: string; portraitSrc?: string; children: ReactNode; actions: ReactNode }) {
   return (
     <section className="wuxia-dialogue-card" role="dialog" aria-modal="true" aria-labelledby="dungeon-dialog-speaker">
       <div className="wuxia-speaker" id="dungeon-dialog-speaker">{speaker}</div>
+      {portraitSrc ? <div className="wuxia-dialogue-portrait"><Image src={portraitSrc} alt={`Ảnh đại diện ${speaker}`} fill sizes="(max-width: 680px) 180px, 240px" /></div> : null}
       <div className="wuxia-dialogue-copy">{children}</div>
       <div className="wuxia-dialogue-actions">{actions}</div>
     </section>
@@ -96,6 +111,7 @@ function WuxiaDialogue({ speaker, children, actions }: { speaker: string; childr
 export function VanlangDungeonScreen(props: DungeonScreenProps) {
   const [rebirthChars, setRebirthChars] = useState(0);
   const [dialogChars, setDialogChars] = useState(0);
+  const [dialogStepIndex, setDialogStepIndex] = useState(0);
   const introButton = useRef<HTMLButtonElement>(null);
   const timekeeper = useMemo(() => dungeonNpcs.find((npc) => npc.role === "timekeeper"), []);
   const guide = useMemo(() => dungeonNpcs.find((npc) => npc.role === "guide"), []);
@@ -103,6 +119,14 @@ export function VanlangDungeonScreen(props: DungeonScreenProps) {
   const guideQuest = useMemo(() => dungeonQuests.find((quest) => quest.type === "codex"), []);
   const bossQuest = useMemo(() => dungeonQuests.find((quest) => quest.type === "boss"), []);
   const rebirthTypingDone = rebirthChars >= props.rebirthText.length;
+  const { dialog, onCloseDialog, onCompleteGenericDialog } = props;
+
+  const activeDialogKey = dialog ? (dialog.kind === "generic" ? `generic:${dialog.npcId}` : dialog.kind) : null;
+  const [prevDialogKey, setPrevDialogKey] = useState(activeDialogKey);
+  if (activeDialogKey !== prevDialogKey) {
+    setPrevDialogKey(activeDialogKey);
+    setDialogStepIndex(0);
+  }
 
   useEffect(() => {
     if (!props.rebirthRequired) return;
@@ -122,11 +146,75 @@ export function VanlangDungeonScreen(props: DungeonScreenProps) {
   }, [props.rebirthRequired]);
 
   const closeDrawer = () => props.onOpenDrawer(null);
-  const genericNpcId = props.dialog?.kind === "generic" ? props.dialog.npcId : null;
+  const genericNpcId = dialog?.kind === "generic" ? dialog.npcId : null;
   const genericNpc = genericNpcId ? props.mapDocument.npcs.find((npc) => npc.id === genericNpcId) : null;
-  const dialogNpc = props.dialog?.kind === "quest" ? guide : props.dialog?.kind === "boss" ? boss : props.dialog?.kind === "generic" ? genericNpc : timekeeper;
-  const dialogText = dialogNpc?.dialogue ?? "";
+  const dialogNpc = dialog?.kind === "quest" ? guide : dialog?.kind === "boss" ? boss : dialog?.kind === "generic" ? genericNpc : timekeeper;
+
+  const dialogueChain = useMemo(() => {
+    if (dialog?.kind === "generic" && genericNpc) {
+      if (genericNpc.name.trim().toLocaleLowerCase("vi") === "lạc nhi") {
+        return [
+          { speaker: "Lạc Nhi", text: "Suỵt... vừa có một nhịp sáng chạy qua phiến đá. Bạn không lạc vào quá khứ — bạn đang đứng ở Cổng Huyền Sử, nơi ký ức chỉ mở ra với người dám giải mã nó." },
+          { speaker: "Người chơi", text: "Mình phải bắt đầu từ đâu?" },
+          { speaker: "Lạc Nhi", text: "Nhìn đài đá kia: 21 mảnh ký ức của Kinh Dương Vương đang bị phong ấn. Mỗi dữ kiện đúng sẽ khôi phục một mảnh; câu trả lời thiếu chứng cứ sẽ cho bạn cơ hội thử lại." },
+          { speaker: "Lạc Nhi", text: "Nếu sẵn sàng, hãy chấp nhận thử thách ngay tại đây. Ta sẽ trao 7 Bí Kíp vào tab Bí Kíp trên thanh điều hướng; mỗi Bí Kíp chứa manh mối cho 3 mảnh đá." },
+        ];
+      }
+      return getNpcDialogueChain(genericNpc);
+    }
+    if (dialog?.kind === "quest") {
+      return [
+        { speaker: "Nini", text: "Cuối cùng cũng có người nghe thấy tiếng gọi từ phiến đá. Ta là Nini, người giữ Kho Dữ Kiện." },
+        { speaker: "Người chơi", text: "Nhiệm vụ Giải mã phiến đá là gì?" },
+        { speaker: "Nini", text: "Mỗi Bí Kíp chứa manh mối cho 3 mảnh đá. Đọc kỹ, chọn dữ kiện đáng tin và trả lời đúng để giải ấn. Sai không phải thất bại: mảnh đá sẽ chờ bạn thử lại." },
+        { speaker: "Nini", text: "Mục tiêu: khôi phục đủ 21/21 mảnh và ghép lại hình tượng Kinh Dương Vương. Phần thưởng khai mở: 7 Bí Kíp — hãy nhận chúng và mở Con đường Ký Ức." },
+      ];
+    }
+    if (dialogNpc) {
+      return [{ text: dialogNpc.dialogue, speaker: dialogNpc.name }];
+    }
+    return [{ text: "", speaker: "" }];
+  }, [dialog?.kind, genericNpc, dialogNpc]);
+
+  const currentStep = dialogueChain[dialogStepIndex] ?? dialogueChain[0] ?? { text: "", speaker: "" };
+  const currentSpeakerLabel = currentStep.speaker?.trim() || dialogNpc?.name || "Người giữ ký ức";
+  const isPlayerSpeaking = currentSpeakerLabel.toLocaleLowerCase("vi").replace(/\s+/g, " ") === "người chơi";
+  const currentSpeaker = isPlayerSpeaking ? props.accountName : currentSpeakerLabel;
+  const currentPortraitSrc = dialog?.kind === "generic"
+    ? isPlayerSpeaking
+      ? props.mapDocument.metadata.playerPortraitSrc
+      : genericNpc?.portraitSrc
+    : undefined;
+  const dialogText = currentStep.text;
   const dialogTypingDone = dialogChars >= dialogText.length;
+  const isMultiStep = dialogueChain.length > 1;
+  const hasNextStep = dialogStepIndex < dialogueChain.length - 1;
+  const hasPrevStep = dialogStepIndex > 0;
+  const isLacNhiDialogue = dialog?.kind === "generic" && genericNpc?.name.trim().toLocaleLowerCase("vi") === "lạc nhi";
+  const completeGenericDialog = useCallback(() => {
+    if (dialog?.kind === "generic" && !hasNextStep && dialogTypingDone) onCompleteGenericDialog(dialog.npcId);
+    onCloseDialog();
+  }, [dialog, dialogTypingDone, hasNextStep, onCloseDialog, onCompleteGenericDialog]);
+
+  useEffect(() => {
+    if (!dialog) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if ((e.code === "Space" || e.key === " ") && !e.repeat) {
+        const target = e.target as HTMLElement | null;
+        if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+        e.preventDefault();
+        if (!dialogTypingDone) {
+          setDialogChars(dialogText.length);
+        } else if (dialog.kind === "generic" && hasNextStep) {
+          setDialogStepIndex((prev) => prev + 1);
+        } else if (dialog.kind === "generic" && !hasNextStep) {
+          completeGenericDialog();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [completeGenericDialog, dialog, dialogTypingDone, dialogText.length, hasNextStep]);
 
   useEffect(() => {
     let timer: number | null = null;
@@ -167,7 +255,7 @@ export function VanlangDungeonScreen(props: DungeonScreenProps) {
           sizes="(min-aspect-ratio: 16/9) 177.78vh, 100vw"
         />
         <MapSprites document={props.mapDocument} layer="underlay2d" />
-        <VanlangDungeonWorld mapDocument={props.mapDocument} playerPos={props.playerPos} facing={props.facing} isMoving={props.isMoving} />
+        <VanlangDungeonWorld mapDocument={props.mapDocument} portalMapNames={props.portalMapNames} activePortals={props.activePortals} lacNhiDialogueCompleted={props.lacNhiDialogueCompleted} playerPos={props.playerPos} facing={props.facing} isMoving={props.isMoving} puzzleCompleted={props.puzzleCompleted} />
         <MapSprites document={props.mapDocument} layer="overlay2d" />
       </div>
       <div className="rebirth-arena-vignette" aria-hidden="true" />
@@ -175,8 +263,9 @@ export function VanlangDungeonScreen(props: DungeonScreenProps) {
 
       {!props.rebirthRequired ? (
         <section className="rebirth-hud" aria-label="Trạng thái nhân vật">
+          <div className="rebirth-player-logo"><Image src="/ui/wuxia/player-logo.png" alt="" fill priority sizes="(max-width: 680px) 68px, 92px" /></div>
           <div className="rebirth-hud-copy">
-            <strong>{props.character.name}</strong>
+            <strong>{props.accountName}</strong>
             <div className="rebirth-health" aria-label={`Sinh lực ${props.character.baseHp} trên ${props.character.baseHp}`}>
               <span style={{ width: "100%" }} />
               <b>{props.character.baseHp}/{props.character.baseHp}</b>
@@ -199,6 +288,7 @@ export function VanlangDungeonScreen(props: DungeonScreenProps) {
           <kbd>Space</kbd><span>Trò chuyện với {props.nearbyNpc.name}</span>
         </button>
       ) : null}
+      {!props.rebirthRequired && !props.dialog && !props.drawer && props.stoneNearby && !props.puzzleCompleted ? <button className="npc-interact-prompt stone-interact-prompt" type="button" onClick={props.onInteract}><kbd>Space</kbd><span>Phục dựng phiến đá</span></button> : null}
 
       {!props.rebirthRequired ? (
         <div className="touch-controls" aria-label="Điều khiển cảm ứng">
@@ -208,7 +298,7 @@ export function VanlangDungeonScreen(props: DungeonScreenProps) {
             <button type="button" onPointerDown={() => props.onMove(1, 0)} aria-label="Đi sang phải">→</button>
             <button type="button" onPointerDown={() => props.onMove(0, 1)} aria-label="Đi xuống">↓</button>
           </div>
-          <button className="touch-interact" type="button" onClick={props.onInteract} disabled={!props.nearbyNpc} aria-label="Tương tác với NPC"><Icon name="hand" /><span>Tương tác</span></button>
+          <button className="touch-interact" type="button" onClick={props.onInteract} disabled={!props.nearbyNpc && !props.stoneNearby} aria-label="Tương tác"><Icon name="hand" /><span>Tương tác</span></button>
         </div>
       ) : null}
 
@@ -235,12 +325,49 @@ export function VanlangDungeonScreen(props: DungeonScreenProps) {
       {props.dialog ? (
         <div className="dungeon-dialogue-layer">
           <WuxiaDialogue
-            speaker={dialogNpc?.name ?? "Người giữ ký ức"}
+            speaker={currentSpeaker}
+            portraitSrc={currentPortraitSrc}
             actions={
               <>
-                <button type="button" className="wuxia-secondary" onClick={props.onCloseDialog}>Đóng</button>
-                {props.dialog.kind === "quest" && guideQuest && !props.completedQuests.includes(guideQuest.id) ? (
-                  <button type="button" className="wuxia-primary" onClick={props.onCollectGuideCodex}>Nhận bí kíp</button>
+                {props.dialog.kind === "generic" && hasPrevStep ? (
+                  <button type="button" className="wuxia-secondary" onClick={() => setDialogStepIndex((prev) => Math.max(0, prev - 1))}>
+                    ← Trước
+                  </button>
+                ) : null}
+                <button type="button" className="wuxia-secondary" onClick={completeGenericDialog}>Đóng</button>
+                {props.dialog.kind === "generic" && isMultiStep && hasNextStep ? (
+                  <button
+                    type="button"
+                    className="wuxia-primary"
+                    onClick={() => {
+                      if (!dialogTypingDone) {
+                        setDialogChars(dialogText.length);
+                      } else {
+                        setDialogStepIndex((prev) => prev + 1);
+                      }
+                    }}
+                  >
+                    {dialogTypingDone ? `Tiếp tục (${dialogStepIndex + 1}/${dialogueChain.length}) →` : "Hiện toàn bộ"}
+                  </button>
+                ) : null}
+                {isLacNhiDialogue && guideQuest && !props.completedQuests.includes(guideQuest.id) && !hasNextStep ? (
+                  <button
+                    type="button"
+                    className="wuxia-primary"
+                    onClick={() => {
+                      if (!dialogTypingDone) {
+                        setDialogChars(dialogText.length);
+                        return;
+                      }
+                      onCompleteGenericDialog(dialog.npcId);
+                      props.onCollectGuideCodex();
+                    }}
+                  >
+                    {dialogTypingDone ? "Chấp nhận thử thách · Nhận 7 Bí Kíp" : "Hiện toàn bộ"}
+                  </button>
+                ) : null}
+                {props.dialog.kind === "quest" && guideQuest && !props.completedQuests.includes(guideQuest.id) && !hasNextStep ? (
+                  <button type="button" className="wuxia-primary" onClick={props.onCollectGuideCodex}>Chấp nhận</button>
                 ) : null}
                 {props.dialog.kind === "boss" && (props.answerResult === true || (bossQuest && props.completedQuests.includes(bossQuest.id))) ? (
                   <button type="button" className="wuxia-primary" onClick={props.onExit}>Trở về Bản đồ</button>
@@ -288,6 +415,31 @@ export function VanlangDungeonScreen(props: DungeonScreenProps) {
             {props.drawer === "rewards" ? <div className="reward-tally"><p><span>Linh hồn</span><strong>{props.totalSouls}</strong></p><p><span>Battle Pass XP</span><strong>{props.battlePassXp}</strong></p></div> : null}
             {props.drawer === "exit" ? <><p>Tiến trình bí kíp và thử thách đã nhận sẽ được giữ lại.</p><div className="drawer-actions"><button type="button" className="wuxia-secondary" onClick={props.onReset}>Trở lại cổng</button><button type="button" className="wuxia-primary" onClick={props.onExit}>Về Bản đồ Ký Ức</button></div></> : null}
           </aside>
+        </div>
+      ) : null}
+      <KinhDuongVuongPuzzle
+        accountId={props.accountId}
+        open={props.stonePuzzleOpen}
+        unlockedCodexIds={props.unlockedCodexIds}
+        onClose={props.onCloseStonePuzzle}
+        onProgress={props.onPuzzleProgress}
+      />
+      {props.rewardRevealOpen ? (
+        <div className="stone-modal-backdrop reward-reveal-backdrop" role="presentation">
+          <section className="reward-reveal-modal" role="dialog" aria-modal="true" aria-labelledby="reward-reveal-title">
+            <p className="reward-reveal-kicker">NHIỆM VỤ HOÀN TẤT · KHO DỮ KIỆN KHAI MỞ</p>
+            <h2 id="reward-reveal-title">Bạn đã nhận 7 Bí Kíp</h2>
+            <p className="reward-reveal-copy">Những trang ký ức xoay quanh bạn. Mỗi bí kíp chứa ba dữ kiện để giải ấn 21 mảnh đá.</p>
+            <div className="reward-reveal-cards">
+              {codexEntries.map((entry, index) => (
+                <article key={entry.id} className="reward-reveal-card" style={{ animationDelay: `${index * 70}ms` }}>
+                  <span aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+                  <strong>{entry.title}</strong>
+                </article>
+              ))}
+            </div>
+            <button type="button" className="wuxia-primary reward-reveal-action" onClick={props.onCloseRewardReveal}>Mang Bí Kíp Lên Đường</button>
+          </section>
         </div>
       ) : null}
     </main>

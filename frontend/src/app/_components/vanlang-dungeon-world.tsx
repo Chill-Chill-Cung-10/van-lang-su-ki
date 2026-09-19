@@ -1,11 +1,11 @@
 "use client";
 
-import { colliderFootprint, type MapDocument, type MapNpc, type MapObject, type Vec2 } from "@van-lang/map-contract";
+import { colliderFootprint, isPositionValid, type MapDocument, type MapNpc, type MapObject, type Vec2 } from "@van-lang/map-contract";
 import { ContactShadows, Html, Line, TransformControls, useAnimations, useGLTF } from "@react-three/drei";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Component, Suspense, useEffect, useMemo, useRef } from "react";
 import type { PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "react";
-import { BufferGeometry, DoubleSide, Float32BufferAttribute, Group, MathUtils, Mesh, Plane, Raycaster, Shape, Vector2, Vector3 } from "three";
+import { BufferGeometry, DoubleSide, Float32BufferAttribute, Group, MathUtils, Mesh, Plane, Raycaster, Shape, Vector2, Vector3, type Material } from "three";
 import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
 import { dungeonNpcs } from "./vanlang-mock-data";
 
@@ -26,10 +26,12 @@ type EditorOverlayConfig = {
   onDraftPoint?: (point: Vec2) => void;
   onEntryPointMove?: (entryPointId: string, point: Vec2) => void;
   onPortalMove?: (portalId: string, point: Vec2) => void;
+  onSpawnMove?: (point: Vec2) => void;
 };
-type DungeonWorldProps = { mapDocument: MapDocument; playerPos: { x: number; y: number }; facing: number; isMoving: boolean; onSceneReady?: () => void; onSceneError?: () => void; editorOverlay?: EditorOverlayConfig; selectedNpcId?: string | null; onNpcSelect?: (npcId: string) => void; onNpcMove?: (npcId: string, position: { x: number; y: number; z: number }) => void };
+type DungeonWorldProps = { mapDocument: MapDocument; portalMapNames?: Record<string, string>; activePortals?: MapDocument["portals"]; lacNhiDialogueCompleted?: boolean; playerPos: { x: number; y: number }; facing: number; isMoving: boolean; puzzleCompleted?: boolean; onSceneReady?: () => void; onSceneError?: () => void; editorOverlay?: EditorOverlayConfig; selectedNpcId?: string | null; onNpcSelect?: (npcId: string) => void; onNpcMove?: (npcId: string, position: { x: number; y: number; z: number }) => void };
 const HERO_MODEL = "/models/vanlang-rebirth/hero.runtime.glb";
 const radians = (degrees: number) => degrees * Math.PI / 180;
+const isLacNhi = (name: string) => name.trim().toLocaleLowerCase("vi") === "lạc nhi";
 
 class SceneErrorBoundary extends Component<{ children: ReactNode; onError?: () => void }, { failed: boolean }> {
   state = { failed: false };
@@ -44,12 +46,15 @@ function CameraRig({ document }: { document: MapDocument }) {
   return null;
 }
 
-function MapModel({ object }: { object: Extract<MapObject, { kind: "model3d" }> }) {
+function MapModel({ object, visible = true }: { object: Extract<MapObject, { kind: "model3d" }>; visible?: boolean }) {
   const loaded = useGLTF(object.src);
   const scene = useMemo(() => loaded.scene.clone(true), [loaded.scene]);
-  useEffect(() => { scene.traverse((node) => { if (node instanceof Mesh) { node.castShadow = object.castShadow; node.receiveShadow = object.receiveShadow; } }); }, [object.castShadow, object.receiveShadow, scene]);
+  const sceneRef = useRef(scene);
+  const opacity = useRef(visible ? 1 : 0);
+  useEffect(() => { scene.traverse((node) => { if (node instanceof Mesh) { node.castShadow = object.castShadow; node.receiveShadow = object.receiveShadow; const cloneMaterial = (material: Material) => { const clone = material.clone(); clone.transparent = true; return clone; }; node.material = Array.isArray(node.material) ? node.material.map(cloneMaterial) : cloneMaterial(node.material); } }); }, [object.castShadow, object.receiveShadow, scene]);
+  useFrame((_state, delta) => { opacity.current = MathUtils.damp(opacity.current, visible ? 1 : 0, 8, delta); sceneRef.current.visible = opacity.current > 0.01; sceneRef.current.traverse((node) => { if (node instanceof Mesh) for (const material of Array.isArray(node.material) ? node.material : [node.material]) material.opacity = opacity.current; }); });
   const transform = object.transform3d;
-  return <primitive object={scene} position={[transform.position.x, transform.position.y, transform.position.z]} rotation={[radians(transform.rotationDeg.x), radians(transform.rotationDeg.y), radians(transform.rotationDeg.z)]} scale={[transform.scale.x, transform.scale.y, transform.scale.z]} renderOrder={object.renderOrder} />;
+  return <group position={[transform.position.x, transform.position.y, transform.position.z]} rotation={[radians(transform.rotationDeg.x), radians(transform.rotationDeg.y), radians(transform.rotationDeg.z)]} scale={[transform.scale.x, transform.scale.y, transform.scale.z]} renderOrder={object.renderOrder}><primitive object={scene} />{visible && object.id === "kinh-duong-vuong-stone" ? <Html center position={[0, 1.75, 0]} distanceFactor={5.5} zIndexRange={[2, 0]}><div className="dungeon-npc-marker" aria-hidden="true"><span className="dungeon-npc-label">{object.name}</span></div></Html> : null}</group>;
 }
 
 function NavmeshSurface({ document }: { document: MapDocument }) {
@@ -71,14 +76,185 @@ function NavmeshSurface({ document }: { document: MapDocument }) {
 }
 
 function NpcBeacon({ name, position, isBoss }: { name: string; position: { x: number; y: number; z: number }; isBoss: boolean }) {
-  return <group position={[position.x, position.y, position.z]}><mesh position={[0, 0.12, 0]} castShadow><cylinderGeometry args={[0.09, 0.14, 0.24, 8]} /><meshStandardMaterial color={isBoss ? "#a73b29" : "#9d7435"} emissive={isBoss ? "#49140d" : "#493117"} /></mesh><mesh position={[0, 0.48, 0]} rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.14, 0.025, 10, 28]} /><meshBasicMaterial color={isBoss ? "#ff9b73" : "#f4cf83"} /></mesh><Html center position={[0, 0.76, 0]} distanceFactor={5.5} zIndexRange={[2, 0]}><span className={`dungeon-npc-label ${isBoss ? "is-boss" : ""}`} aria-hidden="true">{name}</span></Html></group>;
+  return <group position={[position.x, position.y, position.z]}><mesh position={[0, 0.12, 0]} castShadow><cylinderGeometry args={[0.09, 0.14, 0.24, 8]} /><meshStandardMaterial color={isBoss ? "#a73b29" : "#9d7435"} emissive={isBoss ? "#49140d" : "#493117"} /></mesh><mesh position={[0, 0.48, 0]} rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.14, 0.025, 10, 28]} /><meshBasicMaterial color={isBoss ? "#ff9b73" : "#f4cf83"} /></mesh><Html center position={[0, 0.76, 0]} distanceFactor={5.5} zIndexRange={[2, 0]}><div className={`dungeon-npc-marker ${isBoss ? "is-boss" : ""}${isLacNhi(name) ? " is-lac-nhi" : ""}`} aria-hidden="true"><b className="dungeon-npc-quest-mark">!</b><span className="dungeon-npc-label">{name}</span></div></Html></group>;
 }
 
-function RuntimeNpcModel({ npc, selected, onSelect, onMove }: { npc: MapNpc; selected: boolean; onSelect?: () => void; onMove?: (position: { x: number; y: number; z: number }) => void }) {
+function RuntimePortalMarker({ portal, groundY, targetName }: { portal: MapDocument["portals"][number]; groundY: number; targetName: string }) {
+  const outerRingRef = useRef<Mesh>(null);
+  const innerRingRef = useRef<Mesh>(null);
+  const sunDiscRef = useRef<Mesh>(null);
+  const pulseRingRef = useRef<Mesh>(null);
+  const pillarRef = useRef<Mesh>(null);
+  const particlesGroupRef = useRef<Group>(null);
+  const pulseScale = useRef(0.25);
+  const pulseOpacity = useRef(0.9);
+
+  useFrame((_state, delta) => {
+    // 1. Vòng trận hoa văn ngoài xoay thuận chiều
+    if (outerRingRef.current) {
+      outerRingRef.current.rotation.z += delta * 0.35;
+    }
+    // 2. Vòng thái dương bên trong xoay nghịch chiều (tạo xoáy linh khí thôi miên)
+    if (innerRingRef.current) {
+      innerRingRef.current.rotation.z -= delta * 0.5;
+    }
+    // 3. Tâm mặt trời xoay nhẹ
+    if (sunDiscRef.current) {
+      sunDiscRef.current.rotation.z += delta * 0.2;
+    }
+    // 4. Sóng linh khí lan tỏa từ tâm ra biên
+    pulseScale.current += delta * 0.65;
+    pulseOpacity.current = Math.max(0, 1 - pulseScale.current);
+    if (pulseScale.current >= 1.0) {
+      pulseScale.current = 0.25;
+      pulseOpacity.current = 0.9;
+    }
+    if (pulseRingRef.current) {
+      pulseRingRef.current.scale.set(pulseScale.current, pulseScale.current, 1);
+      const mat = pulseRingRef.current.material as Material & { opacity: number };
+      if (mat) mat.opacity = pulseOpacity.current * 0.85;
+    }
+    // 5. Cột linh quang thẳng đứng có nhịp thở (breathing beacon)
+    if (pillarRef.current) {
+      const time = _state.clock.elapsedTime;
+      const breath = Math.sin(time * 2.2);
+      pillarRef.current.scale.y = 1 + breath * 0.08;
+      const mat = pillarRef.current.material as Material & { opacity: number };
+      if (mat) mat.opacity = 0.26 + breath * 0.08;
+    }
+    // 6. Linh hạt vàng kim xoay quanh bán kính cổng
+    if (particlesGroupRef.current) {
+      particlesGroupRef.current.rotation.y += delta * 0.75;
+    }
+  });
+
+  const r = portal.trigger.radius;
+
+  return (
+    <group position={[portal.trigger.center.x, groundY + 0.03, portal.trigger.center.z]}>
+      {/* Nền trận pháp đồng thau đen bóng */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={20}>
+        <circleGeometry args={[r, 48]} />
+        <meshBasicMaterial color="#1f140a" transparent opacity={0.4} side={DoubleSide} depthWrite={false} />
+      </mesh>
+
+      {/* Vòng ngoài thanh mảnh (xoay thuận) */}
+      <mesh ref={outerRingRef} position={[0, 0.006, 0]} rotation={[Math.PI / 2, 0, 0]} renderOrder={21}>
+        <ringGeometry args={[Math.max(0.1, r - 0.045), r, 48]} />
+        <meshBasicMaterial color="#e8a83e" transparent opacity={0.88} side={DoubleSide} depthWrite={false} />
+      </mesh>
+
+      {/* Vòng đồng tâm giữa thanh nhã */}
+      <mesh position={[0, 0.009, 0]} rotation={[Math.PI / 2, 0, 0]} renderOrder={21}>
+        <ringGeometry args={[Math.max(0.08, r * 0.62), Math.max(0.1, r * 0.66), 44]} />
+        <meshBasicMaterial color="#ffd470" transparent opacity={0.65} side={DoubleSide} depthWrite={false} />
+      </mesh>
+
+      {/* Vòng thái dương bên trong (xoay nghịch) */}
+      <mesh ref={innerRingRef} position={[0, 0.013, 0]} rotation={[Math.PI / 2, 0, 0]} renderOrder={22}>
+        <ringGeometry args={[Math.max(0.06, r * 0.3), Math.max(0.08, r * 0.36), 32]} />
+        <meshBasicMaterial color="#f7cf7c" transparent opacity={0.9} side={DoubleSide} depthWrite={false} />
+      </mesh>
+
+      {/* Tâm Thái Dương nhỏ nhắn tinh tế */}
+      <mesh ref={sunDiscRef} position={[0, 0.016, 0]} rotation={[Math.PI / 2, 0, 0]} renderOrder={22}>
+        <circleGeometry args={[Math.max(0.04, r * 0.12), 16]} />
+        <meshBasicMaterial color="#fff3bd" transparent opacity={0.95} side={DoubleSide} depthWrite={false} />
+      </mesh>
+
+      {/* Sóng xung kích linh khí lan tỏa nhẹ nhàng */}
+      <mesh ref={pulseRingRef} position={[0, 0.02, 0]} rotation={[Math.PI / 2, 0, 0]} renderOrder={23}>
+        <ringGeometry args={[Math.max(0.04, r - 0.08), r, 40]} />
+        <meshBasicMaterial color="#ffe48f" transparent opacity={0.7} side={DoubleSide} depthWrite={false} />
+      </mesh>
+
+      {/* Cột Linh Quang thanh thoát (Ethereal Beacon) */}
+      <mesh ref={pillarRef} position={[0, 0.7, 0]} renderOrder={24}>
+        <cylinderGeometry args={[Math.max(0.1, r * 0.35), Math.max(0.16, r * 0.52), 1.4, 24, 1, true]} />
+        <meshBasicMaterial color="#ffd978" transparent opacity={0.2} side={DoubleSide} depthWrite={false} />
+      </mesh>
+
+      {/* Linh hạt phát quang bay lơ lửng quanh cổng */}
+      <group ref={particlesGroupRef} position={[0, 0.22, 0]}>
+        {[0, 1, 2, 3].map((i) => {
+          const angle = (i * Math.PI) / 2;
+          const dist = r * 0.55;
+          return (
+            <mesh key={i} position={[Math.cos(angle) * dist, 0.1 + (i % 2) * 0.1, Math.sin(angle) * dist]}>
+              <octahedronGeometry args={[0.03, 0]} />
+              <meshBasicMaterial color="#fff4b8" />
+            </mesh>
+          );
+        })}
+      </group>
+
+      {/* Thanh Thông Tin Linh Môn tinh gọn 1 dòng (Sleek Horizontal Gamified Info Bar) */}
+      <Html center position={[0, 0.45, 0]} distanceFactor={5.5} zIndexRange={[3, 1]}>
+        <div className="dungeon-portal-marker" aria-hidden="true">
+          <svg viewBox="0 0 24 24" className="dungeon-portal-sun" aria-hidden="true">
+            <circle cx="12" cy="12" r="3.2" fill="#ffd978" />
+            <path d="M12 2 L13.2 8.5 L19 4 L15.5 9.8 L22 12 L15.5 14.2 L19 20 L13.2 15.5 L12 22 L10.8 15.5 L5 20 L8.5 14.2 L2 12 L8.5 9.8 L5 4 L10.8 8.5 Z" fill="#f5cf83" />
+          </svg>
+          <strong className="dungeon-portal-title">{targetName}</strong>
+          <span className="dungeon-portal-sep" aria-hidden="true">·</span>
+          <span className="dungeon-portal-action">Bước vào ▼</span>
+        </div>
+      </Html>
+    </group>
+  );
+}
+
+function RuntimeNpcModel({ npc, selected, visible = true, showQuestMark = true, onSelect, onMove }: { npc: MapNpc; selected: boolean; visible?: boolean; showQuestMark?: boolean; onSelect?: () => void; onMove?: (position: { x: number; y: number; z: number }) => void }) {
   const loaded = useGLTF(npc.src);
   const scene = useMemo(() => cloneSkeleton(loaded.scene), [loaded.scene]);
+  const sceneRef = useRef(scene);
+  const opacity = useRef(visible ? 1 : 0);
+  useEffect(() => { scene.traverse((node) => { if (node instanceof Mesh) { const cloneMaterial = (material: Material) => { const clone = material.clone(); clone.transparent = true; return clone; }; node.material = Array.isArray(node.material) ? node.material.map(cloneMaterial) : cloneMaterial(node.material); } }); }, [scene]);
+  useFrame((_state, delta) => { opacity.current = MathUtils.damp(opacity.current, visible ? 1 : 0, 8, delta); sceneRef.current.visible = opacity.current > 0.01; sceneRef.current.traverse((node) => { if (node instanceof Mesh) for (const material of Array.isArray(node.material) ? node.material : [node.material]) material.opacity = opacity.current; }); });
   const group = useRef<Group>(null);
-  const content = <group ref={group} name={`npc-${npc.id}`} position={[npc.transform.position.x, npc.transform.position.y, npc.transform.position.z]} rotation={[radians(npc.transform.rotationDeg.x), radians(npc.transform.rotationDeg.y), radians(npc.transform.rotationDeg.z)]} scale={[npc.transform.scale.x, npc.transform.scale.y, npc.transform.scale.z]} onClick={(event) => { event.stopPropagation(); onSelect?.(); }}><primitive object={scene} /></group>;
+  const dragPlane = useRef(new Plane());
+  const dragOffset = useRef(new Vector3());
+  const dragging = useRef(false);
+  const rot = npc.transform.rotationDeg ?? { x: 0, y: 0, z: 0 };
+  const scl = npc.transform.scale ?? { x: 1, y: 1, z: 1 };
+  const pointOnDragPlane = (event: ThreeEvent<PointerEvent>) => {
+    const parent = group.current?.parent;
+    if (!parent) return null;
+    const worldPoint = event.ray.intersectPlane(dragPlane.current, new Vector3());
+    return worldPoint ? parent.worldToLocal(worldPoint) : null;
+  };
+  const content = <group
+    ref={group}
+    name={`npc-${npc.id}`}
+    position={[npc.transform.position.x, npc.transform.position.y, npc.transform.position.z]}
+    rotation={[radians(rot.x), radians(rot.y), radians(rot.z)]}
+    scale={[scl.x, scl.y, scl.z]}
+    onClick={(event) => { event.stopPropagation(); onSelect?.(); }}
+    onPointerDown={(event) => {
+      if (!onMove || event.button !== 0 || !group.current?.parent) return;
+      event.stopPropagation();
+      onSelect?.();
+      group.current.parent.updateWorldMatrix(true, false);
+      dragPlane.current.set(new Vector3(0, 1, 0), -npc.transform.position.y).applyMatrix4(group.current.parent.matrixWorld);
+      const point = pointOnDragPlane(event);
+      if (!point) return;
+      dragOffset.current.set(point.x - npc.transform.position.x, 0, point.z - npc.transform.position.z);
+      dragging.current = true;
+      (event.target as Element).setPointerCapture(event.pointerId);
+    }}
+    onPointerMove={(event) => {
+      if (!onMove || !dragging.current) return;
+      event.stopPropagation();
+      const point = pointOnDragPlane(event);
+      if (point) onMove({ x: point.x - dragOffset.current.x, y: npc.transform.position.y, z: point.z - dragOffset.current.z });
+    }}
+    onPointerUp={(event) => {
+      if (!dragging.current) return;
+      event.stopPropagation();
+      dragging.current = false;
+      (event.target as Element).releasePointerCapture(event.pointerId);
+    }}
+  ><primitive object={scene} />{visible ? <Html center position={[0, 1.75, 0]} distanceFactor={5.5} zIndexRange={[2, 0]}><div className={`dungeon-npc-marker${isLacNhi(npc.name) ? " is-lac-nhi" : ""}`} aria-hidden="true">{showQuestMark ? <b className="dungeon-npc-quest-mark">!</b> : null}<span className="dungeon-npc-label">{npc.name}</span></div></Html> : null}</group>;
   return selected && onMove
     ? <TransformControls mode="translate" onObjectChange={() => { const position = group.current?.position; if (position) onMove({ x: position.x, y: position.y, z: position.z }); }}>{content}</TransformControls>
     : content;
@@ -88,7 +264,8 @@ function PlayerAvatar({ mapDocument, playerPos, facing, isMoving }: DungeonWorld
   const group = useRef<Group>(null);
   const initialized = useRef(false);
   const locomotionSpeed = useRef(0);
-  const { scene, animations } = useGLTF(HERO_MODEL);
+  const { scene: loadedScene, animations } = useGLTF(HERO_MODEL);
+  const scene = useMemo(() => cloneSkeleton(loadedScene), [loadedScene]);
   const { actions } = useAnimations(animations, group);
   useEffect(() => { scene.traverse((node) => { if (node instanceof Mesh) { node.castShadow = true; node.receiveShadow = true; } }); }, [scene]);
   useEffect(() => { const idle = actions.Idle; const walk = actions.Walk; const run = actions.Run; idle?.reset().setEffectiveWeight(1).play(); walk?.reset().setEffectiveWeight(0).play(); run?.reset().setEffectiveWeight(0).play(); return () => { idle?.stop(); walk?.stop(); run?.stop(); }; }, [actions]);
@@ -202,6 +379,7 @@ function OverlayPointHandle({ point, groundY, rootRef, label, midpoint = false, 
 function EditorOverlay({ document, config, rootRef }: { document: MapDocument; config: EditorOverlayConfig; rootRef: RefObject<Group | null> }) {
   const footprints = document.objects.map((object) => ({ id: object.id, footprint: colliderFootprint(object) })).filter((item) => item.footprint);
   const spawn = document.navigation.spawn;
+  const spawnValid = isPositionValid(document, spawn);
   const editableNavigation = config.editableNavigation && !config.drawing;
   const polygons = config.showAllPolygons
     ? document.navigation.walkablePolygons.filter((polygon) => polygon.enabled)
@@ -209,8 +387,10 @@ function EditorOverlay({ document, config, rootRef }: { document: MapDocument; c
   return <group name="map-editor-overlay">
     {config.drawing && config.onDraftPoint ? <OverlayDraftSurface groundY={document.world.groundY} rootRef={rootRef} onPoint={config.onDraftPoint} /> : null}
     {config.draft?.length ? <OverlayDraft points={config.draft} groundY={document.world.groundY} /> : null}
-    <Html center position={[spawn.x, document.world.groundY + 0.22, spawn.z]} zIndexRange={[40, 31]}><div className="overlay-spawn-marker" role="img" aria-label="Spawn point">Spawn</div></Html>
-    <mesh name="spawn-point-marker" position={[spawn.x, document.world.groundY + 0.065, spawn.z]} rotation={[Math.PI / 2, 0, 0]} renderOrder={1002}><ringGeometry args={[0.16, 0.25, 32]} /><meshBasicMaterial color="#58e6ff" transparent opacity={0.95} side={DoubleSide} depthWrite={false} /></mesh>
+    <Html center position={[spawn.x, document.world.groundY + 0.22, spawn.z]} zIndexRange={[40, 31]}><div className={`overlay-spawn-marker${!spawnValid ? " is-invalid" : ""}`} role="img" aria-label="Spawn point">{spawnValid ? "Spawn" : "Spawn không hợp lệ!"}</div></Html>
+    <mesh name="spawn-point-marker" position={[spawn.x, document.world.groundY + 0.065, spawn.z]} rotation={[Math.PI / 2, 0, 0]} renderOrder={1002}><ringGeometry args={[0.16, 0.25, 32]} /><meshBasicMaterial color={spawnValid ? "#58e6ff" : "#ff4d4d"} transparent opacity={0.95} side={DoubleSide} depthWrite={false} /></mesh>
+    <mesh position={[spawn.x, document.world.groundY + 0.063, spawn.z]} rotation={[Math.PI / 2, 0, 0]} renderOrder={1001}><ringGeometry args={[Math.max(0.05, document.navigation.playerRadius - 0.03), document.navigation.playerRadius, 32]} /><meshBasicMaterial color={spawnValid ? "#58e6ff" : "#ff4d4d"} transparent opacity={spawnValid ? 0.35 : 0.75} side={DoubleSide} depthWrite={false} /></mesh>
+    {editableNavigation ? <OverlayPointHandle point={spawn} groundY={document.world.groundY} rootRef={rootRef} label={spawnValid ? "Di chuyển điểm spawn" : "Di chuyển điểm spawn (đang ngoài vùng hợp lệ)"} onSelect={() => {}} onMove={(point) => config.onSpawnMove?.(point)} /> : null}
     {document.navigation.entryPoints.map((entryPoint) => {
       const selected = entryPoint.id === config.selectedEntryPointId;
       return <group key={entryPoint.id}>
@@ -226,9 +406,9 @@ function EditorOverlay({ document, config, rootRef }: { document: MapDocument; c
       const selected = portal.id === config.selectedPortalId;
       return <group key={portal.id}>
         <group position={[portal.trigger.center.x, document.world.groundY + 0.06, portal.trigger.center.z]} onClick={!config.drawing ? (event) => { event.stopPropagation(); config.onPortalSelect?.(portal.id); } : undefined}>
-          <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={1003}><circleGeometry args={[portal.trigger.radius, 48]} /><meshBasicMaterial color="#ad58ff" transparent opacity={selected ? 0.48 : 0.28} side={DoubleSide} depthWrite={false} /></mesh>
-          <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={1004}><ringGeometry args={[Math.max(0.04, portal.trigger.radius - 0.06), portal.trigger.radius, 48]} /><meshBasicMaterial color={selected ? "#fff2a8" : "#d9a7ff"} transparent opacity={0.98} side={DoubleSide} depthWrite={false} /></mesh>
-          <Html center position={[0, 0.28, 0]} zIndexRange={[40, 31]}><button type="button" className="overlay-navigation-label is-portal" aria-label={`Portal ${portal.id}`}>{portal.id}</button></Html>
+          <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={1003}><circleGeometry args={[portal.trigger.radius, 48]} /><meshBasicMaterial color={selected ? "#e8a83e" : "#87531d"} transparent opacity={selected ? 0.48 : 0.28} side={DoubleSide} depthWrite={false} /></mesh>
+          <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={1004}><ringGeometry args={[Math.max(0.04, portal.trigger.radius - 0.06), portal.trigger.radius, 48]} /><meshBasicMaterial color={selected ? "#fff2a8" : "#ffd066"} transparent opacity={0.98} side={DoubleSide} depthWrite={false} /></mesh>
+          <Html center position={[0, 0.28, 0]} zIndexRange={[40, 31]}><button type="button" className="overlay-navigation-label is-portal" aria-label={`Portal ${portal.id} tới ${portal.target.mapId}`}>➔ {portal.target.mapId} ({portal.id})</button></Html>
         </group>
         {editableNavigation ? <OverlayPointHandle point={portal.trigger.center} groundY={document.world.groundY} rootRef={rootRef} label={`Di chuyển portal ${portal.id}`} onSelect={() => config.onPortalSelect?.(portal.id)} onMove={(point) => config.onPortalMove?.(portal.id, point)} /> : null}
       </group>;
@@ -253,12 +433,12 @@ function RebirthArena(props: DungeonWorldProps) {
   const root = document.world.rootTransform;
   const rootRef = useRef<Group>(null);
   const models = document.objects.filter((object): object is Extract<MapObject, { kind: "model3d" }> => object.kind === "model3d" && object.enabled).sort((a, b) => a.renderOrder - b.renderOrder || a.id.localeCompare(b.id));
-  return <><ambientLight intensity={1.8} color="#f7e1ba" /><hemisphereLight intensity={1.5} color="#fff0d0" groundColor="#2b1d16" /><directionalLight position={[5, 10, 7]} intensity={2.6} color="#ffe0a3" castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} /><CameraRig document={document} /><group ref={rootRef} position={[root.position.x, root.position.y, root.position.z]} rotation={[radians(root.rotationDeg.x), radians(root.rotationDeg.y), radians(root.rotationDeg.z)]} scale={[root.scale.x, root.scale.y, root.scale.z]}><NavmeshSurface document={document} /><Suspense fallback={null}>{models.filter((object) => !object.binding).map((object) => <MapModel key={object.id} object={object} />)}{models.filter((object) => object.binding).map((object) => { const npc = dungeonNpcs.find((item) => item.id === object.binding?.entityId); return npc ? <NpcBeacon key={object.id} name={npc.name} isBoss={npc.role === "boss"} position={object.transform3d.position} /> : null; })}{document.npcs.map((npc) => <RuntimeNpcModel key={npc.id} npc={npc} selected={props.selectedNpcId === npc.id} onSelect={props.onNpcSelect ? () => props.onNpcSelect?.(npc.id) : undefined} onMove={props.onNpcMove ? (position) => props.onNpcMove?.(npc.id, position) : undefined} />)}<PlayerAvatar {...props} /><SceneReady onReady={props.onSceneReady} /></Suspense>{props.editorOverlay ? <EditorOverlay document={document} config={props.editorOverlay} rootRef={rootRef} /> : null}<ContactShadows position={[0, document.world.groundY + 0.01, 0]} opacity={0.32} scale={11} blur={2.2} far={4} /></group></>;
+  return <><ambientLight intensity={1.8} color="#f7e1ba" /><hemisphereLight intensity={1.5} color="#fff0d0" groundColor="#2b1d16" /><directionalLight position={[5, 10, 7]} intensity={2.6} color="#ffe0a3" castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} /><CameraRig document={document} /><group ref={rootRef} position={[root.position.x, root.position.y, root.position.z]} rotation={[radians(root.rotationDeg.x), radians(root.rotationDeg.y), radians(root.rotationDeg.z)]} scale={[root.scale.x, root.scale.y, root.scale.z]}><NavmeshSurface document={document} /><Suspense fallback={null}>{models.filter((object) => !object.binding).map((object) => <MapModel key={object.id} object={object} visible={object.id !== "kinh-duong-vuong-stone" || !props.puzzleCompleted} />)}{models.filter((object) => object.binding).map((object) => { const npc = dungeonNpcs.find((item) => item.id === object.binding?.entityId); return npc ? <NpcBeacon key={object.id} name={npc.name} isBoss={npc.role === "boss"} position={object.transform3d.position} /> : null; })}{document.npcs.map((npc) => <RuntimeNpcModel key={npc.id} npc={npc} selected={props.selectedNpcId === npc.id} visible={Boolean(props.editorOverlay) || npc.id !== "kinh-duong-vuong" || Boolean(props.puzzleCompleted)} showQuestMark={!isLacNhi(npc.name) || !props.lacNhiDialogueCompleted} onSelect={props.onNpcSelect ? () => props.onNpcSelect?.(npc.id) : undefined} onMove={props.onNpcMove ? (position) => props.onNpcMove?.(npc.id, position) : undefined} />)}{!props.editorOverlay ? (props.activePortals ?? document.portals).filter((portal) => portal.enabled).map((portal) => <RuntimePortalMarker key={portal.id} portal={portal} groundY={document.world.groundY} targetName={props.portalMapNames?.[portal.target.mapId] ?? portal.target.mapId} />) : null}<PlayerAvatar {...props} /><SceneReady onReady={props.onSceneReady} /></Suspense>{props.editorOverlay ? <EditorOverlay document={document} config={props.editorOverlay} rootRef={rootRef} /> : null}<ContactShadows position={[0, document.world.groundY + 0.01, 0]} opacity={0.32} scale={11} blur={2.2} far={4} /></group></>;
 }
 
 export function VanlangDungeonWorld(props: DungeonWorldProps) {
   const camera = props.mapDocument.world.camera;
-  return <SceneErrorBoundary onError={props.onSceneError}><div className="dungeon-world" aria-label="Đấu trường chuyển sinh Văn Lang 3D"><Canvas shadows dpr={[1, 1.35]} camera={{ position: [camera.position.x, camera.position.y, camera.position.z], fov: camera.fovDeg, near: camera.near, far: camera.far }} gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }} onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}><RebirthArena {...props} /></Canvas></div></SceneErrorBoundary>;
+  return <SceneErrorBoundary onError={props.onSceneError}><div className="dungeon-world" aria-label="Đấu trường chuyển sinh Văn Lang 3D"><Canvas style={props.onNpcMove ? { touchAction: "none" } : undefined} shadows dpr={[1, 1.35]} camera={{ position: [camera.position.x, camera.position.y, camera.position.z], fov: camera.fovDeg, near: camera.near, far: camera.far }} gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }} onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}><RebirthArena {...props} /></Canvas></div></SceneErrorBoundary>;
 }
 
 useGLTF.preload(HERO_MODEL);
